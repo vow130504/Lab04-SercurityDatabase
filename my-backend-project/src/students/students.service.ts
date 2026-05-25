@@ -6,9 +6,13 @@ import { CreateStudentDto, UpdateStudentDto } from './dto/student.dto';
 export class StudentsService {
   constructor(private readonly db: DatabaseService) {}
 
-  async findAll() {
+  // SỬA LỖI: Bổ sung currentMaNv và maLop để truy vấn đúng danh sách SV của lớp mà nhân viên đó quản lý
+  async findAll(currentMaNv: string, maLop: string) {
     try {
-      return await this.db.executeProcedure<any>('SP_SEL_SINHVIEN_BY_NHANVIEN_LOP');
+      return await this.db.executeProcedure<any>('SP_SEL_SINHVIEN_BY_NHANVIEN_LOP', {
+        MANV: currentMaNv,
+        MALOP: maLop
+      });
     } catch (e) {
       throw new ForbiddenException((e as Error).message);
     }
@@ -23,7 +27,7 @@ export class StudentsService {
         DIACHI: dto.DIACHI,
         MALOP: dto.MALOP,
         TENDN: dto.TENDN,
-        MK: dto.MK,
+        MK: dto.MK, // Lưu ý: Theo đề bài, nếu băm ở client thì MK ở đây phải là dạng mã hóa
         MANV: currentMaNv,
       });
     } catch (e) {
