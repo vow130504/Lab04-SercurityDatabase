@@ -141,12 +141,6 @@ export type HocPhan = {
   SOTC: number;
 };
 
-export type StudentGrade = {
-  MASV: string;
-  HOTEN: string;
-  HAS_ENCRYPTED: number;
-  DIEMTHI: number | null;
-};
 
 export async function getAllHocPhan(token: string): Promise<HocPhan[]> {
   const response = await fetch(`${API_BASE_URL}/grades/hocphan`, {
@@ -160,50 +154,6 @@ export async function getAllHocPhan(token: string): Promise<HocPhan[]> {
   }
   return response.json() as Promise<HocPhan[]>;
 }
-
-export async function getBangDiem(
-  token: string,
-  malop: string,
-  mahp: string,
-  mk: string
-): Promise<StudentGrade[]> {
-  const response = await fetch(`${API_BASE_URL}/grades/bangdiem`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ malop, mahp, mk }),
-  });
-
-  if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    throw new Error(parseErrorMessage(body));
-  }
-  return response.json() as Promise<StudentGrade[]>;
-}
-
-export async function updateGrade(
-  token: string,
-  masv: string,
-  mahp: string,
-  diemthi: number
-): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/grades/update`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ masv, mahp, diemthi }),
-  });
-
-  if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    throw new Error(parseErrorMessage(body));
-  }
-}
-
 
 export type StudentItem = {
   MASV: string;
@@ -306,6 +256,107 @@ export async function deleteStudent(token: string, masv: string) {
     },
   });
 
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(parseErrorMessage(body));
+  }
+}
+
+// =============================================================
+// API BẢNG ĐIỂM (CLIENT-SIDE RSA ENCRYPTION)
+// =============================================================
+
+export type EncryptedGradeItem = {
+  MASV: string;
+  HOTEN: string;
+  HAS_SCORE: number;         // 0 = chưa có điểm, 1 = đã có điểm mã hóa
+  DIEMTHI_ENC: string | null; // Chuỗi Base64 mã hóa RSA từ Client
+};
+
+/**
+ * Lấy danh sách điểm đang ở dạng mã hóa Base64 từ CSDL.
+ */
+export async function getBangDiem(
+  token: string,
+  malop: string,
+  mahp: string,
+): Promise<EncryptedGradeItem[]> {
+  const response = await fetch(`${API_BASE_URL}/grades/bangdiem`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ malop, mahp }),
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(parseErrorMessage(body));
+  }
+  return response.json() as Promise<EncryptedGradeItem[]>;
+}
+
+/**
+ * Gửi điểm đã được mã hóa RSA từ trình duyệt xuống Backend.
+ */
+export async function updateGrade(
+  token: string,
+  masv: string,
+  mahp: string,
+  diemthiEnc: string,
+): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/grades/update`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ masv, mahp, diemthiEnc }),
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(parseErrorMessage(body));
+  }
+}
+
+/**
+ * Lấy Public Key PEM của nhân viên đang đăng nhập từ CSDL.
+ */
+export async function getPublicKey(token: string): Promise<string | null> {
+  const response = await fetch(`${API_BASE_URL}/grades/pubkey`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  });
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error(parseErrorMessage(body));
+  }
+  const text = await response.text();
+  if (!text) return null;
+  try {
+    const data = JSON.parse(text);
+    if (typeof data === 'string') return data || null;
+    return data ?? null;
+  } catch (e) {
+    // Nếu API trả về chuỗi PEM trực tiếp không phải JSON
+    return text;
+  }
+}
+
+/**
+ * Cập nhật Public Key mới cho nhân viên.
+ */
+export async function updatePublicKey(token: string, pubkey: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/grades/update-pubkey`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ pubkey }),
+  });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
     throw new Error(parseErrorMessage(body));

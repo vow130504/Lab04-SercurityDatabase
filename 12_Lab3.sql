@@ -23,7 +23,7 @@ CREATE TABLE NHANVIEN (
     LUONG VARBINARY(MAX), -- Lưu trữ lương đã mã hóa RSA
     TENDN NVARCHAR(100) NOT NULL UNIQUE,
     MATKHAU VARBINARY(MAX) NOT NULL, -- Lưu trữ mật khẩu băm SHA1
-    PUBKEY VARCHAR(20) -- Tên khóa công khai tương ứng với MANV
+    PUBKEY NVARCHAR(MAX) -- Public Key PEM string từ client (Lab 4)
 );
 
 CREATE TABLE LOP (
@@ -65,86 +65,46 @@ GO
 USE QLSVNhom;
 GO
 
-CREATE OR ALTER PROCEDURE SP_INS_PUBLIC_NHANVIEN
-    @MANV VARCHAR(20),
-    @HOTEN NVARCHAR(100),
-    @EMAIL VARCHAR(20),
-    @LUONGCB INT,
-    @TENDN NVARCHAR(100),
-    @MK VARCHAR(100)
+-- [Câu b.i] - Đặt tên đúng theo yêu cầu đề bài Lab 4
+CREATE OR ALTER PROCEDURE SP_INS_PUBLIC_ENCRYPT_NHANVIEN
+    @MANV    VARCHAR(20),
+    @HOTEN   NVARCHAR(100),
+    @EMAIL   VARCHAR(100),
+    @LUONG   NVARCHAR(MAX),
+    @TENDN   NVARCHAR(100),
+    @MK      VARCHAR(MAX),
+    @PUB     NVARCHAR(MAX)
 AS
 BEGIN
     SET NOCOUNT ON;
-
-    -- Kiểm tra dữ liệu đầu vào
-    IF @MANV IS NULL OR @HOTEN IS NULL OR @TENDN IS NULL OR @MK IS NULL
+    IF @MANV IS NULL OR @HOTEN IS NULL OR @TENDN IS NULL OR @MK IS NULL OR @PUB IS NULL
     BEGIN
         RAISERROR(N'Các tham số không được để trống.', 16, 1);
         RETURN;
     END
-
-    -- Kiểm tra trùng
     IF EXISTS (SELECT 1 FROM NHANVIEN WHERE MANV = @MANV OR TENDN = @TENDN)
     BEGIN
         RAISERROR(N'Mã nhân viên hoặc Tên đăng nhập đã tồn tại.', 16, 1);
         RETURN;
     END
-
-    DECLARE @Sql NVARCHAR(MAX);
-    DECLARE @LuongEncrypted VARBINARY(MAX);
-    DECLARE @MatKhauHash VARBINARY(MAX);
-
-    -- TẠO KHÓA: Chú ý thêm N''' để đảm bảo mật khẩu là kiểu NVARCHAR (Unicode)
-	-- Microsoft đã loại bỏ hoàn toàn thuật toán RSA_512 ra khỏi hệ thống 
-	-- bắt buộc bạn phải nâng chuẩn mã hóa lên RSA_2048 nếu không sẽ lỗi 
-    IF NOT EXISTS (SELECT * FROM sys.asymmetric_keys WHERE name = @MANV)
-    BEGIN
-        SET @Sql = N'CREATE ASYMMETRIC KEY ' + QUOTENAME(@MANV) + 
-                   N' WITH ALGORITHM = RSA_2048 ENCRYPTION BY PASSWORD = N''' 
-                   + REPLACE(@MK, '''', '''''') + N'''';
-        EXEC sp_executesql @Sql;
-    END
-
-    -- Mã hóa lương (Ép kiểu MANV sang NVARCHAR cho chắc chắn với hàm ASYMKEY_ID)
-    SET @LuongEncrypted = ENCRYPTBYASYMKEY(ASYMKEY_ID(CAST(@MANV AS NVARCHAR(20))), CAST(@LUONGCB AS VARCHAR(50)));
-    
-    -- Hash mật khẩu
-    SET @MatKhauHash = HASHBYTES('SHA1', @MK);
-
-    -- Insert
     INSERT INTO NHANVIEN (MANV, HOTEN, EMAIL, LUONG, TENDN, MATKHAU, PUBKEY)
-    VALUES (@MANV, @HOTEN, @EMAIL, @LuongEncrypted, @TENDN, @MatKhauHash, @MANV);
-
-    PRINT N'Thêm nhân viên thành công!';
+    VALUES (@MANV, @HOTEN, @EMAIL, CAST(@LUONG AS VARBINARY(MAX)), @TENDN, HASHBYTES('SHA1', @MK), @PUB);
 END
 GO
 
-
 -- ii) Stored dùng để truy vấn dữ liệu nhân viên (NHANVIEN)
-CREATE OR ALTER PROCEDURE SP_SEL_PUBLIC_NHANVIEN
-    @TENDN NVARCHAR(100),
-    @MK VARCHAR(100)
+
+-- [Câu b.ii] - Đặt tên đúng theo yêu cầu đề bài Lab 4
+CREATE OR ALTER PROCEDURE SP_SEL_PUBLIC_ENCRYPT_NHANVIEN
+    @TENDN  NVARCHAR(100),
+    @MK     VARCHAR(MAX)
 AS
 BEGIN
     SET NOCOUNT ON;
-
-    -- Mật khẩu giải mã bắt buộc là NVARCHAR
-    DECLARE @MK_NVARCHAR NVARCHAR(100) = CAST(@MK AS NVARCHAR(100));
-
-    SELECT 
-        MANV,
-        HOTEN,
-        EMAIL,
-        -- Giải mã và ép kiểu ngược lại thành INT
-        CAST(
-            CAST(DECRYPTBYASYMKEY(ASYMKEY_ID(CAST(PUBKEY AS NVARCHAR(20))), LUONG, @MK_NVARCHAR) AS VARCHAR(50)) 
-        AS INT) AS LUONGCB
-    FROM NHANVIEN
-    WHERE TENDN = @TENDN 
-      AND MATKHAU = HASHBYTES('SHA1', @MK);
+    SELECT MANV, HOTEN, EMAIL, LUONG, PUBKEY FROM NHANVIEN
+    WHERE TENDN = @TENDN AND MATKHAU = HASHBYTES('SHA1', @MK);
 END
 GO
-
 
 -- Test 
 
@@ -157,12 +117,6 @@ GO
 IF EXISTS (SELECT 1 FROM NHANVIEN WHERE MANV = 'NV01')
 BEGIN
     DELETE FROM NHANVIEN WHERE MANV = 'NV01';
-    
-    -- Xóa luôn Asymmetric Key cũ nếu đã tồn tại để tạo lại cái mới cho chuẩn
-    IF EXISTS (SELECT * FROM sys.asymmetric_keys WHERE name = 'NV01')
-    BEGIN
-        DROP ASYMMETRIC KEY [NV01];
-    END
 END
 GO
 
@@ -170,13 +124,14 @@ GO
 -- 2. TEST GỌI PROCEDURE INSERT (Thêm mới và Mã hóa)
 -- =======================================================
 PRINT N'---> ĐANG CHẠY SP INSERT...';
-EXEC SP_INS_PUBLIC_NHANVIEN 
+EXEC SP_INS_PUBLIC_ENCRYPT_NHANVIEN 
     @MANV = 'NV01', 
     @HOTEN = N'Nguyễn Văn A', 
     @EMAIL = 'nva@gmail.com', 
-    @LUONGCB = 3000000, 
+    @LUONG = '3000000', 
     @TENDN = N'NVA', 
-    @MK = 'abcd12';
+    @MK = 'abcd12',
+    @PUB = '';
 GO
 
 -- =======================================================
@@ -197,30 +152,30 @@ GO
 -- =======================================================
 -- 4. TEST GỌI PROCEDURE SELECT (Đăng nhập và Giải mã)
 -- =======================================================
-PRINT N'---> KẾT QUẢ GIẢI MÃ TỪ SP SELECT:';
+PRINT N'---> KẾT QUẢ TỪ SP SELECT (trả về lương chưa giải mã):';
 -- Truyền đúng Tên đăng nhập và Mật khẩu
-EXEC SP_SEL_PUBLIC_NHANVIEN 
+EXEC SP_SEL_PUBLIC_ENCRYPT_NHANVIEN 
     @TENDN = N'NVA', 
     @MK = 'abcd12'; 
 GO
--- Kiểm tra giải mã cho nhân viên NV01 (Nguyễn Văn A)
-EXEC SP_SEL_PUBLIC_NHANVIEN 'NVA', 'abcd12';
+-- Kiểm tra cho nhân viên NV01 (Nguyễn Văn A)
+EXEC SP_SEL_PUBLIC_ENCRYPT_NHANVIEN 'NVA', 'abcd12';
 GO
 
--- Kiểm tra giải mã cho nhân viên NV02 (Lê Đức Mạnh)
-EXEC SP_SEL_PUBLIC_NHANVIEN 'LDM', '123@';
+-- Kiểm tra cho nhân viên NV02 (Lê Đức Mạnh)
+EXEC SP_SEL_PUBLIC_ENCRYPT_NHANVIEN 'LDM', '123@';
 GO
 
--- Kiểm tra giải mã cho nhân viên NV03 (Nguyễn Mai Anh)
-EXEC SP_SEL_PUBLIC_NHANVIEN 'NMA', '123456';
+-- Kiểm tra cho nhân viên NV03 (Nguyễn Mai Anh)
+EXEC SP_SEL_PUBLIC_ENCRYPT_NHANVIEN 'NMA', '123456';
 GO
 
--- Kiểm tra giải mã cho nhân viên NV04 (Phạm Chí Dũng)
-EXEC SP_SEL_PUBLIC_NHANVIEN 'PCD', 'password123';
+-- Kiểm tra cho nhân viên NV04 (Phạm Chí Dũng)
+EXEC SP_SEL_PUBLIC_ENCRYPT_NHANVIEN 'PCD', 'password123';
 GO
 
--- Kiểm tra giải mã cho nhân viên NV05 (Mai Quốc Trung)
-EXEC SP_SEL_PUBLIC_NHANVIEN 'MQT', 'pass123@';
+-- Kiểm tra cho nhân viên NV05 (Mai Quốc Trung)
+EXEC SP_SEL_PUBLIC_ENCRYPT_NHANVIEN 'MQT', 'pass123@';
 GO
 -- Câu d
 USE QLSVNhom;
@@ -384,25 +339,6 @@ BEGIN
     ORDER BY MASV;
 END
 GO
--- CREATE OR ALTER PROCEDURE SP_SEL_ALL_SINHVIEN_BASIC
--- AS
--- BEGIN
---     SET NOCOUNT ON;
-
---     SELECT 
---         S.MASV, 
---         S.HOTEN, 
---         S.NGAYSINH, 
---         S.DIACHI, 
---         S.MALOP, 
---         L.TENLOP,
---         S.TENDN
---     FROM SINHVIEN S
---     LEFT JOIN LOP L ON S.MALOP = L.MALOP
---     ORDER BY S.MALOP, S.MASV;
--- END
--- GO
-
 
 -- =========================================================================
 -- 2. SP Thêm mới Sinh Viên (Chỉ thêm vào lớp nhân viên đó quản lý)
@@ -541,74 +477,39 @@ END
 GO
 
 --SP nhập điểm cho sinh viên, điểm được mã hóa bằng Public Key của nhân viên đang đăng nhập
+
 CREATE OR ALTER PROCEDURE SP_INS_UPD_BANGDIEM
-    @MANV VARCHAR(20),
-    @MASV VARCHAR(20),
-    @MAHP VARCHAR(20),
-    @DIEMTHI DECIMAL(4,2)
+    @MANV        VARCHAR(20),
+    @MASV        VARCHAR(20),
+    @MAHP        VARCHAR(20),
+    @DIEMTHI     NVARCHAR(MAX)
 AS
 BEGIN
     SET NOCOUNT ON;
-
-    IF @DIEMTHI < 0 OR @DIEMTHI > 10
-    BEGIN
-        RAISERROR(N'Điểm thi phải trong khoảng từ 0 đến 10.', 16, 1);
-        RETURN;
-    END
-
     IF NOT EXISTS (SELECT 1 FROM HOCPHAN WHERE MAHP = @MAHP)
     BEGIN
         RAISERROR(N'Học phần không tồn tại.', 16, 1);
         RETURN;
     END
-
     DECLARE @MALOP VARCHAR(20);
     SELECT @MALOP = MALOP FROM SINHVIEN WHERE MASV = @MASV;
-
     IF @MALOP IS NULL
     BEGIN
         RAISERROR(N'Sinh viên không tồn tại.', 16, 1);
         RETURN;
     END
-
     IF NOT EXISTS (SELECT 1 FROM LOP WHERE MALOP = @MALOP AND MANV = @MANV)
     BEGIN
         RAISERROR(N'Bạn không có quyền nhập điểm cho sinh viên này.', 16, 1);
         RETURN;
     END
-
-    DECLARE @PUBKEY VARCHAR(20);
-    SELECT @PUBKEY = PUBKEY FROM NHANVIEN WHERE MANV = @MANV;
-
-    IF @PUBKEY IS NULL
-    BEGIN
-        RAISERROR(N'Không tìm thấy Public Key của nhân viên.', 16, 1);
-        RETURN;
-    END
-
-    DECLARE @DIEMTHI_ENCRYPTED VARBINARY(MAX);
-    SET @DIEMTHI_ENCRYPTED = ENCRYPTBYASYMKEY(
-        ASYMKEY_ID(CAST(@PUBKEY AS NVARCHAR(20))),
-        CAST(@DIEMTHI AS VARCHAR(20))
-    );
-
-    IF @DIEMTHI_ENCRYPTED IS NULL
-    BEGIN
-        RAISERROR(N'Mã hóa điểm thi thất bại.', 16, 1);
-        RETURN;
-    END
-
     IF EXISTS (SELECT 1 FROM BANGDIEM WHERE MASV = @MASV AND MAHP = @MAHP)
     BEGIN
-        UPDATE BANGDIEM
-        SET DIEMTHI = @DIEMTHI_ENCRYPTED
-        WHERE MASV = @MASV
-          AND MAHP = @MAHP;
+        UPDATE BANGDIEM SET DIEMTHI = CAST(@DIEMTHI AS VARBINARY(MAX)) WHERE MASV = @MASV AND MAHP = @MAHP;
     END
     ELSE
     BEGIN
-        INSERT INTO BANGDIEM (MASV, MAHP, DIEMTHI)
-        VALUES (@MASV, @MAHP, @DIEMTHI_ENCRYPTED);
+        INSERT INTO BANGDIEM (MASV, MAHP, DIEMTHI) VALUES (@MASV, @MAHP, CAST(@DIEMTHI AS VARBINARY(MAX)));
     END
 END
 GO
@@ -641,52 +542,29 @@ END
 GO
 
 --SP xem điểm đã giải mã theo lớp học - học phần 
+
 CREATE OR ALTER PROCEDURE SP_SEL_BANGDIEM_GIAIMA_BY_NHANVIEN_LOP_HOCPHAN
-    @MANV VARCHAR(20),
+    @MANV  VARCHAR(20),
     @MALOP VARCHAR(20),
-    @MAHP VARCHAR(20),
-    @MK VARCHAR(100)
+    @MAHP  VARCHAR(20)
 AS
 BEGIN
     SET NOCOUNT ON;
-
     IF NOT EXISTS (SELECT 1 FROM LOP WHERE MALOP = @MALOP AND MANV = @MANV)
     BEGIN
         RAISERROR(N'Bạn không có quyền xem lớp này.', 16, 1);
         RETURN;
     END
-
-    DECLARE @PUBKEY VARCHAR(20);
-    SELECT @PUBKEY = PUBKEY FROM NHANVIEN WHERE MANV = @MANV;
-
-    IF @PUBKEY IS NULL
-    BEGIN
-        RAISERROR(N'Không tìm thấy Public Key của nhân viên.', 16, 1);
-        RETURN;
-    END
-
-    DECLARE @MK_NVARCHAR NVARCHAR(100) = CAST(@MK AS NVARCHAR(100));
-
     SELECT
         S.MASV,
         S.HOTEN,
         CASE WHEN B.DIEMTHI IS NULL THEN 0 ELSE 1 END AS HAS_ENCRYPTED,
         CASE
             WHEN B.DIEMTHI IS NULL THEN NULL
-            ELSE TRY_CAST(
-                CAST(
-                    DECRYPTBYASYMKEY(
-                        ASYMKEY_ID(CAST(@PUBKEY AS NVARCHAR(20))),
-                        B.DIEMTHI,
-                        @MK_NVARCHAR
-                    ) AS VARCHAR(20)
-                ) AS DECIMAL(4,2)
-            )
-        END AS DIEMTHI
+            ELSE CAST(B.DIEMTHI AS NVARCHAR(MAX))
+        END AS DIEMTHI_ENC
     FROM SINHVIEN S
-    LEFT JOIN BANGDIEM B
-      ON B.MASV = S.MASV
-     AND B.MAHP = @MAHP
+    LEFT JOIN BANGDIEM B ON B.MASV = S.MASV AND B.MAHP = @MAHP
     WHERE S.MALOP = @MALOP
     ORDER BY S.MASV;
 END
@@ -696,94 +574,104 @@ GO
 -- Thêm các dòng dữ liệu để test màn hình
 -- =======================================================
 -- Bảng NHANVIEN
-EXEC SP_INS_PUBLIC_NHANVIEN 
+EXEC SP_INS_PUBLIC_ENCRYPT_NHANVIEN 
     @MANV = 'NV02', 
     @HOTEN = N'Lê Đức Mạnh', 
     @EMAIL = 'ldm@gmail.com', 
-    @LUONGCB = 4000000, 
+    @LUONG = '4000000',
     @TENDN = N'LDM', 
-    @MK = '123@';
+    @MK = '123@',
+    @PUB = '';
 GO
 
-EXEC SP_INS_PUBLIC_NHANVIEN 
+EXEC SP_INS_PUBLIC_ENCRYPT_NHANVIEN 
     @MANV = 'NV03', 
     @HOTEN = N'Nguyễn Mai Anh', 
     @EMAIL = 'nma@gmail.com', 
-    @LUONGCB = 4500000, 
+    @LUONG = '4500000',
     @TENDN = N'NMA', 
-    @MK = '123456';
+    @MK = '123456',
+    @PUB = '';
 GO
 
-EXEC SP_INS_PUBLIC_NHANVIEN 
+EXEC SP_INS_PUBLIC_ENCRYPT_NHANVIEN 
     @MANV = 'NV04', 
     @HOTEN = N'Phạm Chí Dũng', 
     @EMAIL = 'pcd@gmail.com', 
-    @LUONGCB = 5000000, 
+    @LUONG = '5000000',
     @TENDN = N'PCD', 
-    @MK = 'password123';
+    @MK = 'password123',
+    @PUB = '';
 GO
 
-EXEC SP_INS_PUBLIC_NHANVIEN 
+EXEC SP_INS_PUBLIC_ENCRYPT_NHANVIEN 
     @MANV = 'NV05', 
     @HOTEN = N'Mai Quốc Trung', 
     @EMAIL = 'mqt@gmail.com', 
-    @LUONGCB = 3500000, 
+    @LUONG = '3500000',
     @TENDN = N'MQT', 
-    @MK = 'pass123@';
+    @MK = 'pass123@',
+    @PUB = '';
 GO
 
-EXEC SP_INS_PUBLIC_NHANVIEN 
+EXEC SP_INS_PUBLIC_ENCRYPT_NHANVIEN 
     @MANV = 'NV06', 
     @HOTEN = N'Nguyễn Tiến Nam', 
     @EMAIL = 'ntn@gmail.com', 
-    @LUONGCB = 6000000, 
+    @LUONG = '6000000',
     @TENDN = N'NTN', 
-    @MK = '123456@';
+    @MK = '123456@',
+    @PUB = '';
 GO
 
-EXEC SP_INS_PUBLIC_NHANVIEN 
+EXEC SP_INS_PUBLIC_ENCRYPT_NHANVIEN 
     @MANV = 'NV07', 
     @HOTEN = N'Trần Thanh Mai', 
     @EMAIL = 'ttm@gmail.com', 
-    @LUONGCB = 5500000, 
+    @LUONG = '5500000',
     @TENDN = N'TTM', 
-    @MK = 'password456';
+    @MK = 'password456',
+    @PUB = '';
 GO
 
-EXEC SP_INS_PUBLIC_NHANVIEN 
+EXEC SP_INS_PUBLIC_ENCRYPT_NHANVIEN 
     @MANV = 'NV08', 
     @HOTEN = N'Lê Minh Huy', 
     @EMAIL = 'lmh@gmail.com', 
-    @LUONGCB = 6000000, 
+    @LUONG = '6000000',
     @TENDN = N'LMH', 
-    @MK = 'password123@';
+    @MK = 'password123@',
+    @PUB = '';
 GO
 
-EXEC SP_INS_PUBLIC_NHANVIEN 
+EXEC SP_INS_PUBLIC_ENCRYPT_NHANVIEN 
     @MANV = 'NV09', 
     @HOTEN = N'Trần Xuân Anh', 
     @EMAIL = 'txa@gmail.com', 
-    @LUONGCB = 5000000, 
+    @LUONG = '5000000',
     @TENDN = N'TXA', 
-    @MK = 'abc123456';
+    @MK = 'abc123456',
+    @PUB = '';
 GO
 
-EXEC SP_INS_PUBLIC_NHANVIEN 
+EXEC SP_INS_PUBLIC_ENCRYPT_NHANVIEN 
     @MANV = 'NV10', 
     @HOTEN = N'Trương Anh Minh', 
     @EMAIL = 'tam@gmail.com', 
-    @LUONGCB = 5000000, 
+    @LUONG = '5000000',
     @TENDN = N'TAM', 
-    @MK = 'abc123';
+    @MK = 'abc123',
+    @PUB = '';
 GO
 
-EXEC SP_INS_PUBLIC_NHANVIEN 
+EXEC SP_INS_PUBLIC_ENCRYPT_NHANVIEN 
     @MANV = 'NV11', 
     @HOTEN = N'Hoàng Văn Dũng', 
     @EMAIL = 'hvd@gmail.com', 
-    @LUONGCB = 8000000, 
+    @LUONG = '8000000',
     @TENDN = N'HVD', 
-    @MK = 'pass123456';
+    @MK = 'pass123456',
+    @PUB = '';
 GO
 
 SELECT * FROM NHANVIEN;
@@ -898,7 +786,27 @@ GO
 --của nhân viên (đã đăng nhập)
 EXEC SP_SEL_HOCPHAN;
 EXEC SP_SEL_SINHVIEN_BY_NHANVIEN_LOP 'NV02', 'L01';
-EXEC SP_INS_UPD_BANGDIEM 'NV02', 'SV01', 'HP01', 8.5;
+-- Nhập điểm: @DIEMTHI nhận chuỗi Base64 đã mã hóa từ client (Lab 4)
+EXEC SP_INS_UPD_BANGDIEM 'NV02', 'SV01', 'HP01', 'BASE64_ENCRYPTED_STRING_FROM_CLIENT';
 GO
 SELECT * FROM BANGDIEM
+GO
+
+CREATE OR ALTER PROCEDURE SP_GET_PUBKEY_NHANVIEN
+    @MANV VARCHAR(20)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT PUBKEY FROM NHANVIEN WHERE MANV = @MANV;
+END
+GO
+
+CREATE OR ALTER PROCEDURE SP_UPDATE_PUBKEY_NHANVIEN
+    @MANV   VARCHAR(20),
+    @PUBKEY NVARCHAR(MAX)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    UPDATE NHANVIEN SET PUBKEY = @PUBKEY WHERE MANV = @MANV;
+END
 GO

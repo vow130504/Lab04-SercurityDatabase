@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import type { FormEvent } from 'react';
-import { getStudentsByClass, getAllHocPhan, updateGrade, getBangDiem, getAllClasses, createStudent, updateStudent, deleteStudent } from '../api';
+import { getStudentsByClass, getAllClasses, createStudent, updateStudent, deleteStudent, getAllHocPhan, getBangDiem, updateGrade, getPublicKey, updatePublicKey } from '../api';
 import type { StudentItem, HocPhan } from '../api';
+import JSEncrypt from 'jsencrypt';
+import CryptoJS from 'crypto-js';
 
 type UserInfo = {
   manv: string;
@@ -11,8 +12,18 @@ type UserInfo = {
   email: string;
 };
 
-type ModalState = 'none' | 'entry' | 'password' | 'transcript';
+interface SubjectScore {
+  mahp: string;
+  tenhp: string;
+  sotc: number;
+  diem: string;
+}
 
+// [Lab 4] KeyData chỉ dùng nội bộ khi tạo khóa, KHÔNG serialize lên DB
+interface KeyData {
+  pubKey: string;         // Lưu lên DB (PEM string thuần túy)
+  encryptedPrivKey: string; // Lưu ở localStorage (KHÔNG lên server)
+}
 export default function ClassStudentsPage() {
   const navigate = useNavigate();
   const { malop } = useParams<{ malop: string }>();
@@ -20,26 +31,17 @@ export default function ClassStudentsPage() {
   const [token, setToken] = useState('');
   const [user, setUser] = useState<UserInfo | null>(null);
   const [students, setStudents] = useState<StudentItem[]>([]);
-  const [hocphans, setHocPhans] = useState<HocPhan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [tenLop, setTenLop] = useState('');
   const [isManager, setIsManager] = useState(false);
 
-  const [modalState, setModalState] = useState<ModalState>('none');
   const [showModal, setShowModal] = useState(false);
-  const [selectedStudent, setSelectedStudent] = useState<StudentItem | null>(null);
   const [editingStudent, setEditingStudent] = useState<StudentItem | null>(null);
   const [selectedClass, setSelectedClass] = useState<string>('');
 
-  const [selectedHocPhan, setSelectedHocPhan] = useState('');
-  const [diemthi, setDiemthi] = useState('');
-  const [entryLoading, setEntryLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const [password, setPassword] = useState('');
-  const [passLoading, setPassLoading] = useState(false);
-  const [transcript, setTranscript] = useState<{ hp: HocPhan, diem: number | null }[]>([]);
   const [deleteConfirmation, setDeleteConfirmation] = useState<{ show: boolean; masv: string }>({ show: false, masv: '' });
 
   const [formData, setFormData] = useState({
@@ -51,6 +53,27 @@ export default function ClassStudentsPage() {
     TENDN: '',
     MK: '',
   });
+
+  // Grade Entry State
+  const [showGradeModal, setShowGradeModal] = useState(false);
+  const [selectedGradeStudent, setSelectedGradeStudent] = useState<StudentItem | null>(null);
+  
+  const [hocphans, setHocPhans] = useState<HocPhan[]>([]);
+  const [selectedHocPhan, setSelectedHocPhan] = useState('');
+  const [score, setScore] = useState('');
+  const [gradeLoading, setGradeLoading] = useState(false);
+  const [gradeError, setGradeError] = useState('');
+  const [gradeSuccessMsg, setGradeSuccessMsg] = useState('');
+  
+  // RSA Security
+  const [dbPubKey, setDbPubKey] = useState<string | null>(null);
+  const [dbEncryptedPrivKey, setDbEncryptedPrivKey] = useState<string | null>(null);
+
+  // Decrypt & Transcript State
+  const [showDecryptModal, setShowDecryptModal] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [isDecrypting, setIsDecrypting] = useState(false);
+  const [studentTranscript, setStudentTranscript] = useState<SubjectScore[] | null>(null);
 
   useEffect(() => {
     const storedToken = localStorage.getItem('lab3_access_token');
@@ -66,6 +89,7 @@ export default function ClassStudentsPage() {
 
     if (malop) {
       void loadData(storedToken, malop);
+      void loadSecurityData(storedToken);
     }
   }, [navigate, malop]);
 
@@ -74,13 +98,11 @@ export default function ClassStudentsPage() {
     setError('');
     try {
       setSelectedClass(classId);
-      const [stData, hpData, classesData] = await Promise.all([
+      const [stData, classesData] = await Promise.all([
         getStudentsByClass(currentToken, classId),
-        getAllHocPhan(currentToken),
         getAllClasses(currentToken)
       ]);
       setStudents(stData);
-      setHocPhans(hpData);
       const currClass = classesData.find(c => c.malop === classId);
       if (currClass) {
         setTenLop(currClass.tenlop);
@@ -97,6 +119,7 @@ export default function ClassStudentsPage() {
   function handleLogout() {
     localStorage.removeItem('lab3_access_token');
     localStorage.removeItem('lab3_user');
+    localStorage.removeItem('lab3_password');
     navigate('/', { replace: true });
   }
 
@@ -218,60 +241,255 @@ export default function ClassStudentsPage() {
     }
   };
 
-  function openGradeEntry(student: StudentItem) {
-    setSelectedStudent(student);
-    setSelectedHocPhan('');
-    setDiemthi('');
-    setModalState('entry');
+  // --- Grade Entry Logic ---
+
+  async function loadSecurityData(tok: string) {
+    try {
+      const [allHp, rawPubKey] = await Promise.all([
+        getAllHocPhan(tok),
+        getPublicKey(tok),
+      ]);
+      setHocPhans(allHp);
+
+      const userObj = JSON.parse(localStorage.getItem('lab3_user') || '{}') as UserInfo;
+      const manv = userObj.manv || '';
+      const teacherPassword = localStorage.getItem('lab3_password') || '';
+
+      // [Lab 4] Public Key lấy từ DB (PEM string thuần túy)
+      // [Lab 4] Private Key (đã mã hóa AES) lấy từ localStorage – KHÔNG lưu trên server
+      const localEncPrivKey = manv ? localStorage.getItem(`lab4_encrypted_privkey_${manv}`) : null;
+
+      if (!rawPubKey || !rawPubKey.includes('BEGIN')) {
+        // Chưa có Public Key trong DB → tạo cặp khóa mới
+        if (teacherPassword && manv) {
+          await silentlyGenerateKeys(tok, teacherPassword, manv);
+        }
+      } else {
+        // Có Public Key trong DB → set vào state
+        setDbPubKey(rawPubKey);
+
+        if (localEncPrivKey) {
+          // Có Private Key trong localStorage → đủ để giải mã
+          setDbEncryptedPrivKey(localEncPrivKey);
+        } else {
+          // Có Public Key nhưng không tìm thấy Private Key trong localStorage
+          // (ví dụ: đổi thiết bị hoặc xóa localStorage)
+          // → Cần tạo lại cặp khóa mới; dữ liệu điểm cũ sẽ không giải mã được
+          if (teacherPassword && manv) {
+            await silentlyGenerateKeys(tok, teacherPassword, manv);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Không tải được cấu hình bảo mật:', err);
+    }
   }
 
-  async function handleSubmitGrade(e: FormEvent) {
-    e.preventDefault();
-    if (!selectedStudent || !selectedHocPhan || !token) return;
+  /**
+   * [Lab 4] Tạo cặp khóa RSA 2048 mới tại client.
+   * - PUBLIC KEY  → lưu lên DB (PEM string thuần túy)
+   * - PRIVATE KEY → mã hóa AES rồi lưu ở localStorage, KHÔNG lên server
+   */
+  async function silentlyGenerateKeys(tok: string, passwordUsed: string, manv: string): Promise<KeyData | null> {
+    if (!passwordUsed || !manv) return null;
 
-    const scoreNum = parseFloat(diemthi);
-    if (isNaN(scoreNum) || scoreNum < 0 || scoreNum > 10) {
-      alert('Điểm thi phải là số từ 0 đến 10');
+    try {
+      const crypt = new JSEncrypt({ default_key_size: '2048' });
+      crypt.getKey();
+      const pub = crypt.getPublicKey();
+      const priv = crypt.getPrivateKey();
+
+      // Mã hóa Private Key bằng AES với mật khẩu người dùng
+      const encryptedPriv = CryptoJS.AES.encrypt(priv, passwordUsed).toString();
+
+      // [Lab 4] Private Key (đã mã hóa) lưu ở localStorage – KHÔNG gửi lên server
+      localStorage.setItem(`lab4_encrypted_privkey_${manv}`, encryptedPriv);
+
+      // [Lab 4] Chỉ lưu Public Key PEM thuần túy lên DB
+      await updatePublicKey(tok, pub);
+
+      setDbPubKey(pub);
+      setDbEncryptedPrivKey(encryptedPriv);
+
+      return { pubKey: pub, encryptedPrivKey: encryptedPriv };
+    } catch (err) {
+      console.error('Silently generating keys failed:', err);
+      return null;
+    }
+  }
+
+  const handleOpenGradeModal = (student: StudentItem) => {
+    setSelectedGradeStudent(student);
+    setScore('');
+    setSelectedHocPhan('');
+    setGradeError('');
+    setGradeSuccessMsg('');
+    setShowGradeModal(true);
+  };
+
+  const handleCloseGradeModal = () => {
+    setShowGradeModal(false);
+    setSelectedGradeStudent(null);
+  };
+
+  async function handleSaveGrade() {
+    if (!selectedHocPhan) {
+      setGradeError('Vui lòng chọn môn học.');
       return;
     }
+    const scoreStr = score.trim();
+    if (!scoreStr) { 
+      setGradeError('Vui lòng nhập điểm thi.'); 
+      return; 
+    }
+    const num = parseFloat(scoreStr);
+    if (isNaN(num) || num < 0 || num > 10) { 
+      setGradeError('Điểm thi phải từ 0 đến 10.'); 
+      return; 
+    }
 
-    setEntryLoading(true);
+    setGradeLoading(true);
+    setGradeError('');
+    setGradeSuccessMsg('');
     try {
-      await updateGrade(token, selectedStudent.MASV, selectedHocPhan, scoreNum);
-      alert('Đã lưu điểm thành công và mã hóa (Dữ liệu thi đã được bảo mật).');
+      // [Lab 4] Lấy Public Key – nếu chưa có thì tự tạo cặp khóa bằng password đã lưu từ lúc đăng nhập
+      let activePubKey = dbPubKey;
+      if (!activePubKey) {
+        const storedPassword = localStorage.getItem('lab3_password') || '';
+        const manv = user?.manv || '';
+        if (!storedPassword || !manv) {
+          throw new Error('Không thể khởi tạo bảo mật. Vui lòng đăng xuất và đăng nhập lại.');
+        }
+        const keyData = await silentlyGenerateKeys(token, storedPassword, manv);
+        if (!keyData) {
+          throw new Error('Không thể tạo khóa bảo mật. Vui lòng thử lại.');
+        }
+        activePubKey = keyData.pubKey;
+      }
+
+      const enc = new JSEncrypt();
+      enc.setPublicKey(activePubKey);
+      const encrypted = enc.encrypt(scoreStr);
+      if (!encrypted) throw new Error('Lỗi mã hóa.');
+
+      await updateGrade(token, selectedGradeStudent!.MASV, selectedHocPhan, encrypted);
+      const hp = hocphans.find(h => h.MAHP === selectedHocPhan);
+      setGradeSuccessMsg(`Đã lưu điểm cho môn ${hp?.TENHP ?? selectedHocPhan} thành công`);
+      setScore('');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Có lỗi xảy ra khi nhập điểm');
+      setGradeError(err instanceof Error ? err.message : 'Lỗi lưu điểm.');
     } finally {
-      setEntryLoading(false);
+      setGradeLoading(false);
     }
   }
 
-  async function handleConfirmPassword(e: FormEvent) {
-    e.preventDefault();
-    if (!token || !selectedStudent || !malop) return;
-
-    setPassLoading(true);
-    try {
-      const promises = hocphans.map(hp => getBangDiem(token, malop, hp.MAHP, password));
-      const results = await Promise.all(promises);
-
-      const newTranscript = hocphans.map((hp, index) => {
-        const studentGrades = results[index];
-        const studentGrade = studentGrades.find(g => g.MASV === selectedStudent.MASV);
-        return {
-          hp,
-          diem: studentGrade && studentGrade.HAS_ENCRYPTED ? studentGrade.DIEMTHI : null,
-        };
-      });
-
-      setTranscript(newTranscript);
-      setModalState('transcript');
-      setPassword('');
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Mật khẩu không đúng hoặc lỗi');
-    } finally {
-      setPassLoading(false);
+  async function handleDecrypt() {
+    const activePassword = passwordInput;
+    if (!activePassword.trim()) { 
+      setGradeError('Vui lòng nhập mật khẩu đăng nhập.'); 
+      return; 
     }
+
+    setIsDecrypting(true);
+    setGradeError('');
+    setStudentTranscript(null);
+    
+    try {
+      const manv = user?.manv || '';
+
+      // [Lab 4] Private Key lấy từ localStorage (KHÔNG từ server)
+      let currentEncryptedPrivKey = manv
+        ? (dbEncryptedPrivKey ?? localStorage.getItem(`lab4_encrypted_privkey_${manv}`))
+        : dbEncryptedPrivKey;
+      let currentPubKey = dbPubKey;
+
+      if (!currentEncryptedPrivKey || !currentPubKey) {
+        const keyData = await silentlyGenerateKeys(token, activePassword, manv);
+        if (keyData) {
+          currentEncryptedPrivKey = keyData.encryptedPrivKey;
+          currentPubKey = keyData.pubKey;
+          localStorage.setItem('lab3_password', activePassword);
+        } else {
+          throw new Error('Không thể khởi tạo hệ thống bảo mật. Vui lòng thử lại.');
+        }
+      }
+
+      if (!currentEncryptedPrivKey) {
+        throw new Error('Lỗi hệ thống: Không tìm thấy khóa giải mã.');
+      }
+
+      const bytes = CryptoJS.AES.decrypt(currentEncryptedPrivKey, activePassword);
+      const privKey = bytes.toString(CryptoJS.enc.Utf8);
+      
+      if (!privKey || !privKey.includes('BEGIN RSA PRIVATE KEY')) {
+        throw new Error('Mật khẩu không đúng!');
+      }
+
+      const dec = new JSEncrypt();
+      dec.setPrivateKey(privKey);
+      
+      const fetchPromises = hocphans.map(hp => 
+        getBangDiem(token, malop!, hp.MAHP)
+          .then(rows => ({ hp, rows, error: false }))
+          .catch(() => ({ hp, rows: [], error: true }))
+      );
+      const results = await Promise.all(fetchPromises);
+      
+      const transcript: SubjectScore[] = [];
+
+      for (const item of results) {
+        if (item.error) {
+          transcript.push({ 
+            mahp: item.hp.MAHP, 
+            tenhp: item.hp.TENHP, 
+            sotc: item.hp.SOTC, 
+            diem: 'Lỗi tải điểm' 
+          });
+          continue;
+        }
+        
+        const studentRow = item.rows.find(r => r.MASV === selectedGradeStudent!.MASV);
+        let diemHienThi = 'Chưa có điểm';
+        
+        if (studentRow && studentRow.DIEMTHI_ENC) {
+          try {
+            const cleanBase64 = studentRow.DIEMTHI_ENC.trim();
+            const result = dec.decrypt(cleanBase64);
+            diemHienThi = result ? result : 'Lỗi giải mã';
+          } catch (err) {
+            diemHienThi = 'Lỗi giải mã';
+          }
+        }
+        
+        transcript.push({
+          mahp: item.hp.MAHP,
+          tenhp: item.hp.TENHP,
+          sotc: item.hp.SOTC,
+          diem: diemHienThi
+        });
+      }
+      
+      transcript.sort((a, b) => a.mahp.localeCompare(b.mahp));
+      setStudentTranscript(transcript);
+    } catch (err) {
+      setGradeError(err instanceof Error ? err.message : 'Mật khẩu xác thực không đúng, từ chối giải mã dữ liệu!');
+    } finally {
+      setIsDecrypting(false);
+    }
+  }
+
+  function handleOpenDecryptModal() {
+    setGradeError('');
+    setPasswordInput('');
+    setStudentTranscript(null);
+    setShowDecryptModal(true);
+  }
+
+  function handleCloseDecrypt() {
+    setShowDecryptModal(false);
+    setPasswordInput('');
+    setStudentTranscript(null);
+    setGradeError('');
   }
 
   const userInitials =
@@ -284,7 +502,7 @@ export default function ClassStudentsPage() {
 
   return (
     <div className="classes-container">
-      <div className="classes-layout" style={{ filter: modalState !== 'none' ? 'blur(2px)' : 'none' }}>
+      <div className="classes-layout">
         <aside className="classes-sidebar">
           <div className="sidebar-brand">
             <div className="brand-logo" aria-hidden="true">🏫</div>
@@ -408,7 +626,7 @@ export default function ClassStudentsPage() {
                                 CHỈNH SỬA
                               </button>
                               <button
-                                onClick={() => openGradeEntry(st)}
+                                onClick={() => handleOpenGradeModal(st)}
                                 style={{ padding: '6px 12px', background: '#2ba84a', color: '#fff', border: '1px solid #2ba84a', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s ease' }}
                                 onMouseEnter={(e) => { e.currentTarget.style.background = '#218838'; }}
                                 onMouseLeave={(e) => { e.currentTarget.style.background = '#2ba84a'; }}
@@ -551,157 +769,8 @@ export default function ClassStudentsPage() {
         </div>
       )}
 
-      {modalState === 'entry' && selectedStudent && (
-        <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: '#fafcff', borderRadius: '12px', zIndex: 1000, width: '800px', boxShadow: '0 4px 30px rgba(0,0,0,0.15)' }}>
-          <button
-            onClick={() => setModalState('none')}
-            style={{ position: 'absolute', top: '20px', right: '25px', background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#888' }}
-          >
-            ✕
-          </button>
-          <div style={{ padding: '30px 40px', borderBottom: '1px solid #f0f0f0' }}>
-            <h3 style={{ margin: 0, fontSize: '22px', color: '#5D4037', textAlign: 'center' }}>
-              <span style={{ marginRight: '10px' }}></span>
-              Nhập điểm sinh viên: <span style={{ fontWeight: 'bold' }}>{selectedStudent.HOTEN}</span> - MSSV: {selectedStudent.MASV}
-            </h3>
-          </div>
 
-          <div style={{ padding: '40px' }}>
-            <form onSubmit={handleSubmitGrade} style={{ position: 'relative' }}>
-              <div style={{ marginBottom: '25px' }}>
-                <label style={{ display: 'block', marginBottom: '10px', fontWeight: 'bold', color: '#555', fontSize: '15px' }}>Môn học:</label>
-                <select value={selectedHocPhan} onChange={e => setSelectedHocPhan(e.target.value)} required style={{ width: '100%', padding: '12px 15px', border: '1px solid #e0e0e0', borderRadius: '6px', background: '#fff', fontSize: '15px', outline: 'none', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.02)' }}>
-                  <option value="">-- Chọn môn học --</option>
-                  {hocphans.map(hp => (
-                    <option key={hp.MAHP} value={hp.MAHP}>{hp.TENHP}</option>
-                  ))}
-                </select>
-              </div>
-              <div style={{ marginBottom: '40px' }}>
-                <label style={{ display: 'block', marginBottom: '10px', fontWeight: 'bold', color: '#555', fontSize: '15px' }}>Điểm thi:</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  min="0"
-                  max="10"
-                  required
-                  value={diemthi}
-                  onChange={e => setDiemthi(e.target.value)}
-                  style={{ width: '100%', padding: '12px 15px', border: '2px solid #a0c4ff', borderRadius: '6px', fontSize: '15px', color: '#333', fontWeight: 'bold', outline: 'none' }}
-                  placeholder="VD: 8.5"
-                />
-                <p style={{ margin: '8px 0 0', fontSize: '13px', color: '#888' }}>Nhập điểm từ 0-10</p>
-              </div>
 
-              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '30px' }}>
-                <button type="submit" disabled={entryLoading} style={{ padding: '12px 40px', background: '#d4af37', color: '#111', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '15px', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 2px 6px rgba(212,175,55,0.3)' }}>
-                  <span style={{ fontSize: '16px' }}></span> {entryLoading ? 'Đang lưu...' : 'Lưu điểm'}
-                </button>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                <button
-                  type="button"
-                  onClick={() => setModalState('password')}
-                  style={{ padding: '10px 20px', background: '#f4fbf5', color: '#257034', border: '1px solid #257034', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}
-                >
-                  Xem điểm
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {modalState === 'password' && selectedStudent && (
-        <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: '#fff', borderRadius: '8px', zIndex: 1000, width: '450px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
-          <div style={{ padding: '15px 20px', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 style={{ margin: 0, fontSize: '16px', color: '#d38c11' }}>Xác nhận để xem điểm</h3>
-            <button onClick={() => setModalState('entry')} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#888' }}>✕</button>
-          </div>
-          <form onSubmit={handleConfirmPassword} style={{ padding: '20px' }}>
-            <p style={{ margin: '0 0 15px', color: '#555', fontSize: '14px', lineHeight: '1.5' }}>
-              Vui lòng nhập mật khẩu để xem điểm của sinh viên <span style={{ fontWeight: 'bold' }}>{selectedStudent.HOTEN}</span>
-            </p>
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', color: '#444', fontSize: '14px' }}>Mật khẩu:</label>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                style={{ width: '100%', padding: '10px', border: '1px solid #d38c11', borderRadius: '4px', outline: 'none' }}
-                placeholder="••••••"
-              />
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-              <button
-                type="button"
-                onClick={() => setModalState('entry')}
-                style={{ padding: '8px 20px', background: '#6c757d', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
-              >
-                Đóng
-              </button>
-              <button
-                type="submit"
-                disabled={passLoading}
-                style={{ padding: '8px 20px', background: '#0d6efd', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
-              >
-                {passLoading ? 'Đang...' : 'Xác nhận'}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {modalState === 'transcript' && selectedStudent && (
-        <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: '#fff', borderRadius: '8px', zIndex: 1000, width: '600px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
-          <div style={{ padding: '20px', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 style={{ margin: 0, fontSize: '18px', color: '#a0711b' }}>Bảng điểm sinh viên <span style={{ fontWeight: 'bold' }}>{selectedStudent.HOTEN}</span></h3>
-            <button onClick={() => setModalState('entry')} style={{ background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#888' }}>✕</button>
-          </div>
-          <div style={{ padding: '20px', maxHeight: '400px', overflowY: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '14px' }}>
-              <thead>
-                <tr style={{ borderBottom: '2px solid #333' }}>
-                  <th style={{ padding: '10px', color: '#333', fontWeight: 'bold' }}>Mã HP</th>
-                  <th style={{ padding: '10px', color: '#333', fontWeight: 'bold' }}>Tên học phần</th>
-                  <th style={{ padding: '10px', color: '#333', fontWeight: 'bold' }}>Số TC</th>
-                  <th style={{ padding: '10px', color: '#333', fontWeight: 'bold' }}>Điểm</th>
-                </tr>
-              </thead>
-              <tbody>
-                {transcript.map((item, idx) => (
-                  <tr key={item.hp.MAHP} style={{ borderBottom: '1px solid #eee', background: idx % 2 === 0 ? '#fff' : '#f9f9f9' }}>
-                    <td style={{ padding: '10px', color: '#555' }}>{item.hp.MAHP}</td>
-                    <td style={{ padding: '10px', color: '#555' }}>{item.hp.TENHP}</td>
-                    <td style={{ padding: '10px', color: '#555' }}>{item.hp.SOTC}</td>
-                    <td style={{ padding: '10px', color: '#555' }}>
-                      {item.diem !== null ? (
-                        <span style={{ fontWeight: 'bold', color: '#333' }}>{item.diem.toFixed(2)}</span>
-                      ) : (
-                        <span style={{ fontStyle: 'italic', color: '#e74c3c' }}>Chưa có<br />điểm</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div style={{ padding: '15px 20px', borderTop: '1px solid #eee', display: 'flex', justifyContent: 'center' }}>
-            <button
-              type="button"
-              onClick={() => setModalState('none')}
-              style={{ padding: '8px 20px', background: '#ccc', color: '#333', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
-            >
-              Đóng
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Modal xác nhận xóa sinh viên */}
       {deleteConfirmation.show && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1001 }}>
           <div style={{ background: '#fff', borderRadius: '12px', padding: '40px', width: '100%', maxWidth: '500px', boxShadow: '0 4px 30px rgba(0,0,0,0.15)' }}>
@@ -736,6 +805,167 @@ export default function ClassStudentsPage() {
                 {loading ? 'Đang xóa...' : 'Xóa'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Grade Entry Modal */}
+      {showGradeModal && selectedGradeStudent && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', zIndex: 100 }}>
+          <div style={{ background: '#fff', borderRadius: '10px', padding: '0', width: '100%', maxWidth: '850px', boxShadow: '0 4px 15px rgba(0,0,0,0.2)', overflow: 'hidden' }}>
+            <div style={{ padding: '20px 30px', borderBottom: '1px solid #eee', backgroundColor: '#f8f9fa' }}>
+              <h2 style={{ margin: 0, color: '#5d4037', fontSize: '20px', textAlign: 'center', fontWeight: '700' }}>
+                Nhập điểm sinh viên: {selectedGradeStudent.HOTEN} – MSSV: {selectedGradeStudent.MASV}
+              </h2>
+            </div>
+            <div style={{ padding: '30px' }}>
+              {gradeSuccessMsg && (
+                <div style={{ backgroundColor: '#d4edda', color: '#155724', padding: '15px', borderRadius: '6px', marginBottom: '25px', border: '1px solid #c3e6cb', fontWeight: '500' }}>
+                  {gradeSuccessMsg}
+                </div>
+              )}
+              {gradeError && !showDecryptModal && (
+                <div style={{ backgroundColor: '#f8d7da', color: '#721c24', padding: '15px', borderRadius: '6px', marginBottom: '25px', border: '1px solid #f5c6cb', fontWeight: '500' }}>
+                  {gradeError}
+                </div>
+              )}
+
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ display: 'block', fontWeight: 'bold', color: '#5d4037', marginBottom: '8px', fontSize: '15px' }}>Môn học:</label>
+                <select 
+                  value={selectedHocPhan}
+                  onChange={(e) => { setSelectedHocPhan(e.target.value); setGradeSuccessMsg(''); setGradeError(''); }}
+                  style={{ width: '100%', padding: '12px 15px', border: '1px solid #ced4da', borderRadius: '6px', fontSize: '15px', color: '#333', outline: 'none', backgroundColor: '#fff' }}
+                >
+                  <option value="">-- Chọn môn học --</option>
+                  {hocphans.map(hp => (
+                    <option key={hp.MAHP} value={hp.MAHP}>{hp.TENHP}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ marginBottom: '30px' }}>
+                <label style={{ display: 'block', fontWeight: 'bold', color: '#5d4037', marginBottom: '8px', fontSize: '15px' }}>Điểm thi:</label>
+                <input 
+                  type="text" 
+                  value={score}
+                  onChange={(e) => { setScore(e.target.value); setGradeSuccessMsg(''); setGradeError(''); }}
+                  placeholder="Nhập điểm từ 0-10"
+                  style={{ width: '100%', padding: '12px 15px', border: '1px solid #ced4da', borderRadius: '6px', fontSize: '15px', boxSizing: 'border-box', outline: 'none' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '30px', gap: '15px' }}>
+                <button 
+                  onClick={handleCloseGradeModal}
+                  style={{ backgroundColor: '#f1f1f1', color: '#555', border: '1px solid #ccc', padding: '12px 30px', borderRadius: '6px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' }}
+                >
+                  Đóng
+                </button>
+                <button 
+                  onClick={handleSaveGrade}
+                  disabled={gradeLoading}
+                  style={{ backgroundColor: '#e2c073', color: '#5d4037', border: 'none', padding: '12px 40px', borderRadius: '6px', fontSize: '16px', fontWeight: 'bold', cursor: gradeLoading ? 'not-allowed' : 'pointer', boxShadow: '0 2px 5px rgba(0,0,0,0.1)' }}
+                >
+                  {gradeLoading ? 'Đang lưu...' : 'Lưu điểm'}
+                </button>
+              </div>
+
+              <div style={{ borderTop: '1px solid #eee', paddingTop: '20px', display: 'flex', justifyContent: 'flex-start' }}>
+                <button 
+                  onClick={handleOpenDecryptModal}
+                  style={{ backgroundColor: '#ffffff', color: '#198754', border: '1px solid #198754', padding: '10px 20px', borderRadius: '6px', fontSize: '15px', fontWeight: 'bold', cursor: 'pointer' }}
+                >
+                  Xem điểm
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Decrypt & Transcript Modal */}
+      {showDecryptModal && selectedGradeStudent && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ backgroundColor: '#fff', borderRadius: '10px', padding: '30px', width: '90%', maxWidth: studentTranscript ? '850px' : '550px', boxShadow: '0 5px 15px rgba(0,0,0,0.3)', maxHeight: '90vh', overflowY: 'auto' }}>
+            <h3 style={{ marginTop: 0, color: '#5d4037', borderBottom: '2px solid #eee', paddingBottom: '15px', fontSize: '18px', fontWeight: '700' }}>
+              {studentTranscript ? `Bảng điểm sinh viên ${selectedGradeStudent.HOTEN}` : 'Xác thực Xem điểm'}
+            </h3>
+            
+            {studentTranscript ? (
+              <div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '10px' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid #333', textAlign: 'left' }}>
+                      <th style={{ padding: '10px', fontSize: '14px', color: '#333' }}>Mã HP</th>
+                      <th style={{ padding: '10px', fontSize: '14px', color: '#333' }}>Tên học phần</th>
+                      <th style={{ padding: '10px', fontSize: '14px', color: '#333', textAlign: 'center' }}>Số TC</th>
+                      <th style={{ padding: '10px', fontSize: '14px', color: '#333', textAlign: 'center' }}>Điểm</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {studentTranscript.map(row => (
+                      <tr key={row.mahp} style={{ borderBottom: '1px solid #eee' }}>
+                        <td style={{ padding: '12px 10px', fontSize: '14px', color: '#555' }}>{row.mahp}</td>
+                        <td style={{ padding: '12px 10px', fontSize: '14px', color: '#555' }}>{row.tenhp}</td>
+                        <td style={{ padding: '12px 10px', fontSize: '14px', color: '#555', textAlign: 'center' }}>{row.sotc}</td>
+                        <td style={{ padding: '12px 10px', fontSize: '14px', textAlign: 'center' }}>
+                          {row.diem === 'Chưa có điểm' ? (
+                            <span style={{ color: '#d32f2f', fontStyle: 'italic' }}>Chưa có điểm</span>
+                          ) : row.diem.includes('Lỗi') ? (
+                            <span style={{ color: '#d32f2f', fontWeight: 'bold' }}>{row.diem}</span>
+                          ) : (
+                            <span style={{ color: '#333', fontWeight: 'bold' }}>{row.diem}</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div style={{ marginTop: '25px', display: 'flex', justifyContent: 'center' }}>
+                  <button 
+                    onClick={handleCloseDecrypt}
+                    style={{ padding: '8px 30px', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+                  >
+                    Đóng
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <p style={{ color: '#555', fontSize: '14px', marginBottom: '20px', lineHeight: '1.5' }}>
+                  Hệ thống yêu cầu nhập <strong>mật khẩu</strong> (chính là mật khẩu đăng nhập của bạn) để xác thực và giải mã toàn bộ bảng điểm của sinh viên này.
+                </p>
+                {gradeError && (
+                  <div style={{ color: '#dc3545', marginBottom: '15px', fontSize: '14px', backgroundColor: '#fce4e4', padding: '10px', borderRadius: '6px', border: '1px solid #f5c6cb' }}>
+                    {gradeError}
+                  </div>
+                )}
+                <input 
+                  type="password"
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  placeholder="Nhập mật khẩu của bạn (VD: 123@)"
+                  style={{ width: '100%', padding: '12px', border: '1px solid #ccc', borderRadius: '6px', fontSize: '14px', marginBottom: '20px', boxSizing: 'border-box', outline: 'none' }}
+                  onKeyDown={(e) => e.key === 'Enter' && handleDecrypt()}
+                />
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                  <button 
+                    onClick={handleCloseDecrypt}
+                    style={{ padding: '9px 20px', backgroundColor: '#f1f1f1', border: '1px solid #ccc', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', color: '#555' }}
+                  >
+                    Hủy
+                  </button>
+                  <button 
+                    onClick={() => handleDecrypt()}
+                    disabled={isDecrypting || !passwordInput}
+                    style={{ padding: '9px 24px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '6px', cursor: (isDecrypting || !passwordInput) ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
+                  >
+                    {isDecrypting ? 'Đang xác thực...' : 'Bắt đầu sử dụng'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

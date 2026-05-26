@@ -53,7 +53,7 @@ export class AuthService {
 
   async getSalary(tendn: string, matkhau: string) {
     const rows = await this.databaseService.executeProcedure<{ LUONGCB: number }>(
-      'SP_SEL_PUBLIC_NHANVIEN',
+      'SP_SEL_PUBLIC_ENCRYPT_NHANVIEN',
       {
         TENDN: tendn,
         MK: matkhau,
