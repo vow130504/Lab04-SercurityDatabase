@@ -118,6 +118,56 @@ BEGIN
     WHERE MANV = @MANV;
 END
 GO
+
+
+-- SP Lấy danh sách tất cả nhân viên
+CREATE OR ALTER PROCEDURE SP_SEL_ALL_NHANVIEN
+AS
+BEGIN
+    SET NOCOUNT ON;
+    -- Không trả về Mật khẩu và Lương để bảo mật
+    SELECT MANV, HOTEN, EMAIL, TENDN 
+    FROM NHANVIEN
+    ORDER BY MANV;
+END
+GO
+
+-- SP Cập nhật thông tin nhân viên cơ bản (Họ tên, Email)
+CREATE OR ALTER PROCEDURE SP_UPD_NHANVIEN
+    @MANV VARCHAR(20),
+    @HOTEN NVARCHAR(100),
+    @EMAIL VARCHAR(20)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF NOT EXISTS (SELECT 1 FROM NHANVIEN WHERE MANV = @MANV)
+    BEGIN
+        RAISERROR(N'Nhân viên không tồn tại.', 16, 1);
+        RETURN;
+    END
+
+    UPDATE NHANVIEN
+    SET HOTEN = @HOTEN, EMAIL = @EMAIL
+    WHERE MANV = @MANV;
+END
+GO
+
+-- SP Xóa nhân viên
+CREATE OR ALTER PROCEDURE SP_DEL_NHANVIEN
+    @MANV VARCHAR(20)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    -- Ràng buộc: Không cho phép xóa nếu nhân viên đang quản lý lớp học
+    IF EXISTS (SELECT 1 FROM LOP WHERE MANV = @MANV)
+    BEGIN
+        RAISERROR(N'Không thể xóa nhân viên này vì đang quản lý lớp học.', 16, 1);
+        RETURN;
+    END
+
+    DELETE FROM NHANVIEN WHERE MANV = @MANV;
+END
+GO
 -- Test 
 
 USE QLSVNhom;

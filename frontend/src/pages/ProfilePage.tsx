@@ -125,6 +125,9 @@ export default function ProfilePage() {
             <button className="sidebar-tab" type="button" onClick={() => navigate('/classes')}>
               Quản lý lớp học
             </button>
+            <button className="sidebar-tab" type="button" onClick={() => navigate('/employees')}>
+              Quản lý nhân viên
+            </button>
             <button className="sidebar-tab active" type="button">
               Thông tin nhân viên
             </button>

@@ -83,4 +83,25 @@ export class AuthService {
     );
     return { success: true };
   }
+
+
+  async getAllEmployees() {
+    return this.databaseService.executeProcedure('SP_SEL_ALL_NHANVIEN', {});
+  }
+
+  async updateEmployee(manv: string, payload: { HOTEN: string; EMAIL: string }) {
+    await this.databaseService.executeProcedure('SP_UPD_NHANVIEN', {
+      MANV: manv,
+      HOTEN: payload.HOTEN,
+      EMAIL: payload.EMAIL,
+    });
+    return { success: true };
+  }
+
+  async deleteEmployee(manv: string) {
+    await this.databaseService.executeProcedure('SP_DEL_NHANVIEN', {
+      MANV: manv,
+    });
+    return { success: true };
+  }
 }

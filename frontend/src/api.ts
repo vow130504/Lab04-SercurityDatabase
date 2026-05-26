@@ -376,3 +376,36 @@ export async function createEmployee(
     throw new Error(parseErrorMessage(body));
   }
 }
+
+
+export type EmployeeItem = {
+  MANV: string;
+  HOTEN: string;
+  EMAIL: string;
+  TENDN: string;
+};
+
+export async function getAllEmployees(token: string): Promise<EmployeeItem[]> {
+  const response = await fetch(`${API_BASE_URL}/auth/employee`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error(parseErrorMessage(await response.json().catch(() => null)));
+  return response.json();
+}
+
+export async function updateEmployee(token: string, manv: string, payload: { HOTEN: string; EMAIL: string }) {
+  const response = await fetch(`${API_BASE_URL}/auth/employee/${encodeURIComponent(manv)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(parseErrorMessage(await response.json().catch(() => null)));
+}
+
+export async function deleteEmployee(token: string, manv: string) {
+  const response = await fetch(`${API_BASE_URL}/auth/employee/${encodeURIComponent(manv)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error(parseErrorMessage(await response.json().catch(() => null)));
+}

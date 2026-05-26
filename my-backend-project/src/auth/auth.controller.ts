@@ -1,5 +1,4 @@
-import { Body, Controller, Post, Get, UseGuards } from '@nestjs/common';
-import { AuthService } from './auth.service';
+import { Body, Controller, Post, Get, Put, Delete, Param, UseGuards } from '@nestjs/common';import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -26,5 +25,24 @@ export class AuthController {
   async createEmployee(@Body() body: any) {
     // Gọi SP tạo nhân viên
     return this.authService.createEmployee(body);
+  }
+
+
+  @UseGuards(JwtAuthGuard)
+  @Get('employee')
+  async getAllEmployees() {
+    return this.authService.getAllEmployees();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('employee/:manv')
+  async updateEmployee(@Param('manv') manv: string, @Body() body: any) {
+    return this.authService.updateEmployee(manv, body);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('employee/:manv')
+  async deleteEmployee(@Param('manv') manv: string) {
+    return this.authService.deleteEmployee(manv);
   }
 }
