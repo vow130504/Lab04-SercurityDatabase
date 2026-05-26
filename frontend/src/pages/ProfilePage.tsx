@@ -1,8 +1,8 @@
+import CryptoJS from 'crypto-js';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getSalary } from '../api';
 import JSEncrypt from 'jsencrypt';
-import CryptoJS from 'crypto-js';
 
 type UserInfo = { manv: string; hoten: string; tendn: string; email: string; pubkey: string; };
 

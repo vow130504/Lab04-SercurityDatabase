@@ -142,7 +142,7 @@ EXEC SP_INS_PUBLIC_ENCRYPT_NHANVIEN
     @EMAIL = 'nva@gmail.com', 
     @LUONG = '3000000', 
     @TENDN = N'NVA', 
-    @MK = 'abcd12',
+    @MK = '7c4a8d09ca3762af61e59520943dc26494f8941b',
     @PUB = '';
 GO
 
@@ -165,29 +165,29 @@ GO
 -- 4. TEST GỌI PROCEDURE SELECT (Đăng nhập và Giải mã)
 -- =======================================================
 PRINT N'---> KẾT QUẢ TỪ SP SELECT (trả về lương chưa giải mã):';
--- Truyền đúng Tên đăng nhập và Mật khẩu
+-- Truyền đúng Tên đăng nhập và Mật khẩu (chuỗi hash của 123456)
 EXEC SP_SEL_PUBLIC_ENCRYPT_NHANVIEN 
     @TENDN = N'NVA', 
-    @MK = 'abcd12'; 
+    @MK = '7c4a8d09ca3762af61e59520943dc26494f8941b'; 
 GO
 -- Kiểm tra cho nhân viên NV01 (Nguyễn Văn A)
-EXEC SP_SEL_PUBLIC_ENCRYPT_NHANVIEN 'NVA', 'abcd12';
+EXEC SP_SEL_PUBLIC_ENCRYPT_NHANVIEN 'NVA', '7c4a8d09ca3762af61e59520943dc26494f8941b';
 GO
 
 -- Kiểm tra cho nhân viên NV02 (Lê Đức Mạnh)
-EXEC SP_SEL_PUBLIC_ENCRYPT_NHANVIEN 'LDM', '123@';
+EXEC SP_SEL_PUBLIC_ENCRYPT_NHANVIEN 'LDM', '7c4a8d09ca3762af61e59520943dc26494f8941b';
 GO
 
 -- Kiểm tra cho nhân viên NV03 (Nguyễn Mai Anh)
-EXEC SP_SEL_PUBLIC_ENCRYPT_NHANVIEN 'NMA', '123456';
+EXEC SP_SEL_PUBLIC_ENCRYPT_NHANVIEN 'NMA', '7c4a8d09ca3762af61e59520943dc26494f8941b';
 GO
 
 -- Kiểm tra cho nhân viên NV04 (Phạm Chí Dũng)
-EXEC SP_SEL_PUBLIC_ENCRYPT_NHANVIEN 'PCD', 'password123';
+EXEC SP_SEL_PUBLIC_ENCRYPT_NHANVIEN 'PCD', '7c4a8d09ca3762af61e59520943dc26494f8941b';
 GO
 
 -- Kiểm tra cho nhân viên NV05 (Mai Quốc Trung)
-EXEC SP_SEL_PUBLIC_ENCRYPT_NHANVIEN 'MQT', 'pass123@';
+EXEC SP_SEL_PUBLIC_ENCRYPT_NHANVIEN 'MQT', '7c4a8d09ca3762af61e59520943dc26494f8941b';
 GO
 -- Câu d
 USE QLSVNhom;
@@ -591,7 +591,7 @@ EXEC SP_INS_PUBLIC_ENCRYPT_NHANVIEN
     @EMAIL = 'ldm@gmail.com', 
     @LUONG = '4000000',
     @TENDN = N'LDM', 
-    @MK = '123@',
+    @MK = '7c4a8d09ca3762af61e59520943dc26494f8941b',
     @PUB = '';
 GO
 
@@ -601,7 +601,7 @@ EXEC SP_INS_PUBLIC_ENCRYPT_NHANVIEN
     @EMAIL = 'nma@gmail.com', 
     @LUONG = '4500000',
     @TENDN = N'NMA', 
-    @MK = '123456',
+    @MK = '7c4a8d09ca3762af61e59520943dc26494f8941b',
     @PUB = '';
 GO
 
@@ -611,7 +611,7 @@ EXEC SP_INS_PUBLIC_ENCRYPT_NHANVIEN
     @EMAIL = 'pcd@gmail.com', 
     @LUONG = '5000000',
     @TENDN = N'PCD', 
-    @MK = 'password123',
+    @MK = '7c4a8d09ca3762af61e59520943dc26494f8941b',
     @PUB = '';
 GO
 
@@ -621,7 +621,7 @@ EXEC SP_INS_PUBLIC_ENCRYPT_NHANVIEN
     @EMAIL = 'mqt@gmail.com', 
     @LUONG = '3500000',
     @TENDN = N'MQT', 
-    @MK = 'pass123@',
+    @MK = '7c4a8d09ca3762af61e59520943dc26494f8941b',
     @PUB = '';
 GO
 
@@ -631,7 +631,7 @@ EXEC SP_INS_PUBLIC_ENCRYPT_NHANVIEN
     @EMAIL = 'ntn@gmail.com', 
     @LUONG = '6000000',
     @TENDN = N'NTN', 
-    @MK = '123456@',
+    @MK = '7c4a8d09ca3762af61e59520943dc26494f8941b',
     @PUB = '';
 GO
 
@@ -641,7 +641,7 @@ EXEC SP_INS_PUBLIC_ENCRYPT_NHANVIEN
     @EMAIL = 'ttm@gmail.com', 
     @LUONG = '5500000',
     @TENDN = N'TTM', 
-    @MK = 'password456',
+    @MK = '7c4a8d09ca3762af61e59520943dc26494f8941b',
     @PUB = '';
 GO
 
@@ -651,7 +651,7 @@ EXEC SP_INS_PUBLIC_ENCRYPT_NHANVIEN
     @EMAIL = 'lmh@gmail.com', 
     @LUONG = '6000000',
     @TENDN = N'LMH', 
-    @MK = 'password123@',
+    @MK = '7c4a8d09ca3762af61e59520943dc26494f8941b',
     @PUB = '';
 GO
 
@@ -661,7 +661,7 @@ EXEC SP_INS_PUBLIC_ENCRYPT_NHANVIEN
     @EMAIL = 'txa@gmail.com', 
     @LUONG = '5000000',
     @TENDN = N'TXA', 
-    @MK = 'abc123456',
+    @MK = '7c4a8d09ca3762af61e59520943dc26494f8941b',
     @PUB = '';
 GO
 
@@ -671,7 +671,7 @@ EXEC SP_INS_PUBLIC_ENCRYPT_NHANVIEN
     @EMAIL = 'tam@gmail.com', 
     @LUONG = '5000000',
     @TENDN = N'TAM', 
-    @MK = 'abc123',
+    @MK = '7c4a8d09ca3762af61e59520943dc26494f8941b',
     @PUB = '';
 GO
 
@@ -681,7 +681,7 @@ EXEC SP_INS_PUBLIC_ENCRYPT_NHANVIEN
     @EMAIL = 'hvd@gmail.com', 
     @LUONG = '8000000',
     @TENDN = N'HVD', 
-    @MK = 'pass123456',
+    @MK = '7c4a8d09ca3762af61e59520943dc26494f8941b',
     @PUB = '';
 GO
 
@@ -749,7 +749,7 @@ INSERT INTO HOCPHAN (MAHP, TENHP, SOTC) VALUES
 -- Test stored procedure của các màn hình
 -- =======================================================
 --Màn hình quản lý đăng nhập xử lý đăng nhập với tài khoản là nhân viên (MANV, MATKHAU)
-EXEC SP_LOGIN_NHANVIEN 'NV02', '123@';
+EXEC SP_LOGIN_NHANVIEN 'NV02', '7c4a8d09ca3762af61e59520943dc26494f8941b';
 
 --Màn hình quản lý lớp học
 EXEC SP_SEL_ALL_LOP;
