@@ -52,14 +52,13 @@ export async function login(manv: string, matkhau: string): Promise<LoginRespons
   return response.json() as Promise<LoginResponse>;
 }
 
-export async function getSalary(token: string, password: string): Promise<number> {
+// Xóa tham số password, đổi kết quả trả về thành string (chuỗi mã hóa)
+export async function getSalary(token: string): Promise<string> {
   const response = await fetch(`${API_BASE_URL}/auth/salary`, {
-    method: 'POST',
+    method: 'GET',
     headers: {
-      'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ password }),
   });
 
   if (!response.ok) {
@@ -68,7 +67,7 @@ export async function getSalary(token: string, password: string): Promise<number
   }
 
   const data = await response.json();
-  return data.luongcb;
+  return data.luongEncrypted;
 }
 
 export async function getAllClasses(
@@ -356,6 +355,21 @@ export async function updatePublicKey(token: string, pubkey: string): Promise<vo
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({ pubkey }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(parseErrorMessage(body));
+  }
+}
+
+export async function createEmployee(
+  token: string,
+  payload: { MANV: string; HOTEN: string; EMAIL: string; LUONG: string; TENDN: string; MK: string; PUBKEY: string }
+) {
+  const response = await fetch(`${API_BASE_URL}/auth/employee`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
   });
   if (!response.ok) {
     const body = await response.json().catch(() => null);

@@ -4,6 +4,7 @@ import ClassStudentsPage from './pages/ClassStudentsPage';
 
 import LoginPage from './pages/LoginPage';
 import ProfilePage from './pages/ProfilePage';
+import EmployeesPage from './pages/EmployeesPage';
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
 
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/employees" element={<EmployeesPage />} />
       </Routes>
     </BrowserRouter>
   );

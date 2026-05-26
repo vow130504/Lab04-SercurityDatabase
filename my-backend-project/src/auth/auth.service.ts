@@ -51,19 +51,36 @@ export class AuthService {
     };
   }
 
-  async getSalary(tendn: string, matkhau: string) {
-    const rows = await this.databaseService.executeProcedure<{ LUONGCB: number }>(
-      'SP_SEL_PUBLIC_ENCRYPT_NHANVIEN',
+  // Cập nhật lại hàm getSalary
+  async getSalary(manv: string) {
+    // Gọi Stored Procedure vừa tạo
+    const rows = await this.databaseService.executeProcedure<{ LUONG_ENC: string }>(
+      'SP_GET_LUONG_ENCRYPT_NHANVIEN',
       {
-        TENDN: tendn,
-        MK: matkhau,
-      },
+        MANV: manv,
+      }
     );
 
     if (rows.length === 0) {
-      throw new UnauthorizedException('Mật khẩu không chính xác.');
+      throw new UnauthorizedException('Không tìm thấy thông tin nhân viên.');
     }
 
-    return { luongcb: rows[0].LUONGCB };
+    return { luongEncrypted: rows[0].LUONG_ENC };
+  }
+
+  async createEmployee(payload: any) {
+    await this.databaseService.executeProcedure(
+      'SP_INS_PUBLIC_ENCRYPT_NHANVIEN',
+      {
+        MANV: payload.MANV,
+        HOTEN: payload.HOTEN,
+        EMAIL: payload.EMAIL,
+        LUONG: payload.LUONG, // Chuỗi RSA Base64
+        TENDN: payload.TENDN,
+        MK: payload.MK,       // Chuỗi SHA1 Hex
+        PUB: payload.PUBKEY
+      }
+    );
+    return { success: true };
   }
 }

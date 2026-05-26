@@ -17,13 +17,21 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const result = await login(manv, matkhau);
+      // BĂM SHA1 MẬT KHẨU TẠI CLIENT
+      const hashedPassword = CryptoJS.SHA1(matkhau).toString(CryptoJS.enc.Hex);
+
+      // Gửi mật khẩu đã băm xuống Backend
+      const result = await login(manv, hashedPassword);
+      
       localStorage.setItem('lab3_access_token', result.accessToken);
       localStorage.setItem('lab3_user', JSON.stringify(result.user));
-      localStorage.setItem('lab3_password', matkhau);
+      
+      // Vẫn lưu mật khẩu gốc vào local để xài cho việc giải mã AES khóa Private Key sau này
+      localStorage.setItem('lab3_password', matkhau); 
+      
       navigate('/classes');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Dang nhap that bai.');
+      setError(err instanceof Error ? err.message : 'Đăng nhập thất bại.');
     } finally {
       setLoading(false);
     }
