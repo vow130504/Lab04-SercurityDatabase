@@ -102,6 +102,15 @@ export default function LoginPage() {
           <button type="submit" className="login-btn" disabled={loading}>
             {loading ? 'Đang xử lý...' : 'Đăng Nhập'}
           </button>
+
+          <button
+            type="button"
+            className="login-link-btn"
+            onClick={() => navigate('/register')}
+            disabled={loading}
+          >
+            Đăng ký tài khoản nhân viên
+          </button>
         </form>
       </div>
     </div>

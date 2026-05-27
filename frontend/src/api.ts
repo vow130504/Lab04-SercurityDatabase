@@ -8,6 +8,7 @@ export type LoginResponse = {
     email: string;
     tendn: string;
     pubkey: string;
+    isadmin: boolean;
   };
 };
 
@@ -363,26 +364,36 @@ export async function updatePublicKey(token: string, pubkey: string): Promise<vo
 }
 
 export async function createEmployee(
-  token: string,
-  payload: { MANV: string; HOTEN: string; EMAIL: string; LUONG: string; TENDN: string; MK: string; PUBKEY: string }
+  token: string | null,
+  payload: { MANV?: string | null; HOTEN: string; EMAIL: string; LUONG?: string | null; TENDN: string; MK: string; PUBKEY: string; VAITRO?: number | boolean }
 ) {
   const response = await fetch(`${API_BASE_URL}/auth/employee`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify(payload),
   });
   if (!response.ok) {
     const body = await response.json().catch(() => null);
     throw new Error(parseErrorMessage(body));
   }
+  return response.json();
 }
 
 
 export type EmployeeItem = {
-  MANV: string;
-  HOTEN: string;
-  EMAIL: string;
-  TENDN: string;
+  manv: string;
+  hoten: string;
+  email: string;
+  tendn: string;
+  isadmin: boolean;
+};
+
+export type EmployeeDetailItem = EmployeeItem & {
+  luong: string | null;
+  pubkey: string | null;
 };
 
 export async function getAllEmployees(token: string): Promise<EmployeeItem[]> {
@@ -390,10 +401,34 @@ export async function getAllEmployees(token: string): Promise<EmployeeItem[]> {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!response.ok) throw new Error(parseErrorMessage(await response.json().catch(() => null)));
-  return response.json();
+  const rows = (await response.json()) as Array<{
+    manv: string;
+    hoten: string;
+    email: string;
+    tendn: string;
+    isadmin: boolean;
+  }>;
+  return rows;
 }
 
-export async function updateEmployee(token: string, manv: string, payload: { HOTEN: string; EMAIL: string }) {
+export async function getEmployee(token: string, manv: string): Promise<EmployeeDetailItem> {
+  const response = await fetch(`${API_BASE_URL}/auth/employee/${encodeURIComponent(manv)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    throw new Error(parseErrorMessage(await response.json().catch(() => null)));
+  }
+
+  return response.json() as Promise<EmployeeDetailItem>;
+}
+
+export async function updateEmployee(
+  token: string,
+  manv: string,
+  payload: { HOTEN: string; EMAIL: string; TENDN?: string; LUONG?: string; VAITRO?: boolean },
+) {
   const response = await fetch(`${API_BASE_URL}/auth/employee/${encodeURIComponent(manv)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -408,4 +443,15 @@ export async function deleteEmployee(token: string, manv: string) {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!response.ok) throw new Error(parseErrorMessage(await response.json().catch(() => null)));
+}
+
+export async function refreshAuth(token: string) {
+  const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(parseErrorMessage(body));
+  }
+  return response.json() as Promise<{ accessToken: string; user: EmployeeDetailItem & { pubkey?: string } }>;
 }

@@ -530,6 +530,9 @@ export default function ClassStudentsPage() {
             <button className="sidebar-tab active" type="button" onClick={() => navigate('/classes')}>
               Quản lý lớp học
             </button>
+            <button className="sidebar-tab" type="button" onClick={() => navigate('/employees')}>
+              Quản lý nhân viên
+            </button>
           </nav>
           <div className="sidebar-footer">
             <button className="sidebar-logout-btn" onClick={handleLogout}>Đăng xuất</button>

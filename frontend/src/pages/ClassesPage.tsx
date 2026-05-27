@@ -149,6 +149,9 @@ export default function ClassesPage() {
             <button className="sidebar-tab active" type="button">
               Quản lý lớp học
             </button>
+            <button className="sidebar-tab" type="button" onClick={() => navigate('/employees')}>
+              Quản lý nhân viên
+            </button>
           </nav>
 
           <div className="sidebar-footer">
