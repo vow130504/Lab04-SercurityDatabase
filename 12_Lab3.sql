@@ -220,9 +220,6 @@ BEGIN
     WHERE MANV = @MANV;
 END
 GO
-
-EXEC SP_UPD_VAITRO_NHANVIEN 'NV01', 1;
-
 -- SP Xóa nhân viên
 CREATE OR ALTER PROCEDURE SP_DEL_NHANVIEN
     @MANV VARCHAR(20)
@@ -265,6 +262,9 @@ EXEC SP_INS_PUBLIC_ENCRYPT_NHANVIEN
     @TENDN = N'NVA', 
     @MK = '7c4a8d09ca3762af61e59520943dc26494f8941b',
     @PUB = '';
+GO
+
+EXEC SP_UPD_VAITRO_NHANVIEN 'NV01', 1;
 GO
 
 -- =======================================================
