@@ -213,6 +213,37 @@ body {
   cursor: not-allowed;
 }
 
+.login-link-btn {
+  margin-top: 2px;
+  border: none;
+  background: transparent;
+  color: #1d4ed8;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+  padding: 8px 12px;
+}
+
+.login-link-btn:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.form-success {
+  padding: 14px;
+  background-color: #ecfdf5;
+  color: #047857;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid #a7f3d0;
+  text-align: center;
+}
+
+.register-card {
+  max-width: 520px;
+}
+
 /* ==================== CLASSES PAGE ==================== */
 .classes-container {
   min-height: 100vh;

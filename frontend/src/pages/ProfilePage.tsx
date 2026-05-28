@@ -1,53 +1,75 @@
+import CryptoJS from 'crypto-js';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getSalary } from '../api';
+import JSEncrypt from 'jsencrypt';
 
-type UserInfo = {
-  manv: string;
-  hoten: string;
-  tendn: string;
-  email: string;
-  pubkey: string;
-};
+type UserInfo = { manv: string; hoten: string; tendn: string; email: string; pubkey: string; };
 
 export default function ProfilePage() {
   const navigate = useNavigate();
   const [user, setUser] = useState<UserInfo | null>(null);
 
-  const [salary, setSalary] = useState<number | null>(null);
+  const [encryptedSalary, setEncryptedSalary] = useState<string | null>(null);
+  const [decryptedSalary, setDecryptedSalary] = useState<number | null>(null);
+  const [passwordInput, setPasswordInput] = useState('');
+  
   const [loadingSalary, setLoadingSalary] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     const storedToken = localStorage.getItem('lab3_access_token');
     const storedUser = localStorage.getItem('lab3_user');
-
+    
+    // Tách riêng navigate và return
     if (!storedToken || !storedUser) {
       navigate('/', { replace: true });
-      return;
+      return; 
     }
-
-    setUser(JSON.parse(storedUser) as UserInfo);
-
-    // Auto-fetch salary if password is in localStorage
-    const storedPassword = localStorage.getItem('lab3_password');
-    if (storedPassword) {
-      fetchSalary(storedToken, storedPassword);
-    } else {
-      setError('Bạn cần đăng nhập lại để xem mức lương.');
-    }
+    
+    setUser(JSON.parse(storedUser));
+    fetchEncryptedSalary(storedToken);
   }, [navigate]);
 
-  async function fetchSalary(currentToken: string, pass: string) {
+  // 1. Chỉ gọi API lấy chuỗi mã hóa
+  async function fetchEncryptedSalary(currentToken: string) {
     setLoadingSalary(true);
-    setError('');
     try {
-      const decSalary = await getSalary(currentToken, pass);
-      setSalary(decSalary);
+      const enc = await getSalary(currentToken);
+      setEncryptedSalary(enc);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Lỗi giải mã lương.');
+      setError(err instanceof Error ? err.message : 'Lỗi lấy dữ liệu lương.');
     } finally {
       setLoadingSalary(false);
+    }
+  }
+
+  // 2. Hàm giải mã tại Client
+  const handleDecrypt = () => {
+    if (!passwordInput || !encryptedSalary || !user) return;
+    setError('');
+    
+    try {
+      // Lấy Private Key đã mã hóa AES từ LocalStorage (được lưu lúc tạo khóa)
+      const encPrivKey = localStorage.getItem(`lab4_encrypted_privkey_${user.manv}`);
+      if (!encPrivKey) throw new Error("Chưa khởi tạo khóa bảo mật trên thiết bị này.");
+
+      // Giải mã AES để lấy Private Key gốc
+      const bytes = CryptoJS.AES.decrypt(encPrivKey, passwordInput);
+      const privKey = bytes.toString(CryptoJS.enc.Utf8);
+      
+      if (!privKey.includes('BEGIN RSA PRIVATE KEY')) throw new Error("Mật khẩu không đúng.");
+
+      // Giải mã Lương bằng RSA Private Key
+      const dec = new JSEncrypt();
+      dec.setPrivateKey(privKey);
+      const rawSalary = dec.decrypt(encryptedSalary);
+      
+      if (!rawSalary) throw new Error("Không thể giải mã lương.");
+      
+      setDecryptedSalary(Number(rawSalary));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Lỗi giải mã.');
     }
   }
 
@@ -103,6 +125,9 @@ export default function ProfilePage() {
             <button className="sidebar-tab" type="button" onClick={() => navigate('/classes')}>
               Quản lý lớp học
             </button>
+            <button className="sidebar-tab" type="button" onClick={() => navigate('/employees')}>
+              Quản lý nhân viên
+            </button>
             <button className="sidebar-tab active" type="button">
               Thông tin nhân viên
             </button>
@@ -149,14 +174,25 @@ export default function ProfilePage() {
                   <tr style={{ borderBottom: '1px solid #e0e0e0', background: '#f0fdf4' }}>
                     <td style={{ padding: '15px 20px', color: '#047857', fontWeight: 'bold' }}>Lương cơ bản</td>
                     <td style={{ padding: '15px 20px', color: '#059669', fontWeight: 'bold', fontSize: '16px' }}>
-                      {loadingSalary ? (
-                        'Đang giải mã...'
-                      ) : error ? (
-                        <span style={{ color: '#dc2626' }}>{error}</span>
-                      ) : salary !== null ? (
-                        new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(salary)
+                      {decryptedSalary !== null ? (
+                        new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(decryptedSalary)
                       ) : (
-                        '--'
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                          <input 
+                            type="password" 
+                            placeholder="Nhập mật khẩu để giải mã"
+                            value={passwordInput}
+                            onChange={e => setPasswordInput(e.target.value)}
+                            style={{ padding: '6px 10px', borderRadius: '4px', border: '1px solid #ccc' }}
+                          />
+                          <button 
+                            onClick={handleDecrypt}
+                            style={{ padding: '6px 12px', background: '#059669', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                          >
+                            Xem lương
+                          </button>
+                          {error && <span style={{ color: 'red', fontSize: '12px', alignSelf: 'center' }}>{error}</span>}
+                        </div>
                       )}
                     </td>
                   </tr>
