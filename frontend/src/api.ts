@@ -9,6 +9,7 @@ export type LoginResponse = {
     tendn: string;
     pubkey: string;
     isadmin: boolean;
+    enc_privkey: string | null;
   };
 };
 
@@ -69,6 +70,22 @@ export async function getSalary(token: string): Promise<string> {
 
   const data = await response.json();
   return data.luongEncrypted;
+}
+
+export async function initKeys(token: string, payload: { luong: string; pubkey: string; enc_privkey: string }) {
+  const response = await fetch(`${API_BASE_URL}/auth/init-keys`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(parseErrorMessage(body));
+  }
+  return response.json();
 }
 
 export async function getAllClasses(

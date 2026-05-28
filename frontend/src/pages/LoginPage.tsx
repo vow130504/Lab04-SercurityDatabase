@@ -27,8 +27,10 @@ export default function LoginPage() {
       localStorage.setItem('lab3_access_token', result.accessToken);
       localStorage.setItem('lab3_user', JSON.stringify(result.user));
       
-      // Vẫn lưu mật khẩu gốc vào local để xài cho việc giải mã AES khóa Private Key sau này
-      localStorage.setItem('lab3_password', matkhau); 
+      // Lưu ENC_PRIVKEY từ server vào localStorage (đã được mã hóa AES bằng password của user)
+      if (result.user.enc_privkey) {
+        localStorage.setItem(`lab4_encrypted_privkey_${result.user.manv}`, result.user.enc_privkey);
+      }
       
       navigate('/classes');
     } catch (err) {

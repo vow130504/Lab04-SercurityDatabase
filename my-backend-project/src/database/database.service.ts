@@ -49,4 +49,12 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     const result = await request.execute<T>(procedureName);
     return result.recordset ?? [];
   }
+
+  async query<T>(queryString: string): Promise<T[]> {
+    if (!this.pool) {
+      throw new Error('SQL connection is not initialized.');
+    }
+    const result = await this.pool.request().query<T>(queryString);
+    return result.recordset ?? [];
+  }
 }

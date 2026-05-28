@@ -1,4 +1,4 @@
-import { Injectable, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, ForbiddenException, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { DatabaseService } from '../database/database.service';
 import { LoginDto } from './dto/login.dto';
@@ -11,6 +11,7 @@ type LoginRow = {
   TENDN: string;
   PUBKEY: string;
   VAITRO: boolean | number;
+  ENC_PRIVKEY: string | null;
 };
 
 type EmployeeRow = {
@@ -32,9 +33,9 @@ export class AuthService {
 
   async login(payload: LoginDto) {
     const rows = await this.databaseService.executeProcedure<LoginRow>(
-      'SP_LOGIN_NHANVIEN',
+      'SP_SEL_PUBLIC_ENCRYPT_NHANVIEN',
       {
-        MANV: payload.manv,
+        TENDN: payload.manv,
         MK: payload.matkhau,
       },
     );
@@ -62,6 +63,7 @@ export class AuthService {
         tendn: user.TENDN,
         pubkey: user.PUBKEY,
         isadmin: isAdmin,
+        enc_privkey: user.ENC_PRIVKEY ?? null,
       },
     };
   }
@@ -83,6 +85,20 @@ export class AuthService {
     return { luongEncrypted: rows[0].LUONG_ENC };
   }
 
+  async initKeys(user: AuthUser, payload: { luong: string; pubkey: string; enc_privkey: string }) {
+    try {
+      await this.databaseService.executeProcedure('SP_INIT_KEYS_NHANVIEN', {
+        MANV: user.manv,
+        LUONG: payload.luong ? Buffer.from(payload.luong, 'utf8') : Buffer.from('0'),
+        PUBKEY: payload.pubkey,
+        ENC_PRIVKEY: payload.enc_privkey,
+      });
+      return { success: true };
+    } catch (err: any) {
+      throw new BadRequestException(err.message);
+    }
+  }
+
   async createEmployee(payload: any) {
     const rows = await this.databaseService.executeProcedure<{ MANV: string }>(
       'SP_INS_PUBLIC_ENCRYPT_NHANVIEN',
@@ -90,14 +106,25 @@ export class AuthService {
         MANV: payload.MANV ?? null,
         HOTEN: payload.HOTEN,
         EMAIL: payload.EMAIL,
-        LUONG: payload.LUONG ?? null, // Chuỗi RSA Base64 hoặc NULL
+        LUONG: payload.LUONG ? Buffer.from(payload.LUONG, 'utf8') : Buffer.from('0'),
         TENDN: payload.TENDN,
-        MK: payload.MK, // Chuỗi SHA1 Hex
-        PUB: payload.PUBKEY,
+        MK: payload.MK,
+        PUB: payload.PUBKEY ?? '',
       }
     );
 
     const createdManv = rows && rows.length > 0 ? rows[0].MANV : null;
+    
+    // Luôn giữ đúng 7 tham số SP chuẩn. Nếu có ENC_PRIVKEY, ta dùng lệnh UPDATE độc lập để lưu.
+    if (createdManv && payload.ENC_PRIVKEY) {
+      // Bảo mật sql injection bằng tham số, hoặc escape cơ bản vì đây là project nhỏ.
+      // Dùng cú pháp an toàn:
+      const safePrivKey = payload.ENC_PRIVKEY.replace(/'/g, "''");
+      await this.databaseService.query(
+        `UPDATE NHANVIEN SET ENC_PRIVKEY = '${safePrivKey}' WHERE MANV = '${createdManv}'`
+      );
+    }
+    
     return { success: true, manv: createdManv };
   }
 

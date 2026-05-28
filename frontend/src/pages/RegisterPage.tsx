@@ -32,10 +32,10 @@ export default function RegisterPage() {
       const pubKey = crypt.getPublicKey();
       const privKey = crypt.getPrivateKey();
 
-      crypt.setPublicKey(pubKey);
+      // Mã hóa Private Key bằng AES với mật khẩu gốc của user
       const encryptedPrivKey = CryptoJS.AES.encrypt(privKey, formData.MATKHAU).toString();
 
-      // Call API to create employee. Do not send MANV or LUONG (admin sets LUONG later).
+      // Gửi ENC_PRIVKEY lên server để lưu vào DB (cũng lưu vào localStorage để dùng ngay)
       const res = await createEmployee(null, {
         HOTEN: formData.HOTEN.trim(),
         EMAIL: formData.EMAIL.trim(),
@@ -43,6 +43,7 @@ export default function RegisterPage() {
         TENDN: formData.TENDN.trim(),
         MK: hashedPassword,
         PUBKEY: pubKey,
+        ENC_PRIVKEY: encryptedPrivKey,
       });
 
       const createdManv = res?.manv ?? null;

@@ -44,28 +44,55 @@ export default function ProfilePage() {
     }
   }
 
-  // 2. Hàm giải mã tại Client
-  const handleDecrypt = () => {
+  // 2. Hàm giải mã tại Client - user chỉ cần nhập mật khẩu, mọi thứ tự động
+  const handleDecrypt = async () => {
     if (!passwordInput || !encryptedSalary || !user) return;
     setError('');
     
     try {
-      // Lấy Private Key đã mã hóa AES từ LocalStorage (được lưu lúc tạo khóa)
       const encPrivKey = localStorage.getItem(`lab4_encrypted_privkey_${user.manv}`);
-      if (!encPrivKey) throw new Error("Chưa khởi tạo khóa bảo mật trên thiết bị này.");
+
+      if (!encPrivKey) {
+        // TH: Tài khoản tạo bằng SQL, chưa có ENC_PRIVKEY - tự động khởi tạo ngầm
+        if (!user.pubkey || user.pubkey.trim() === '') {
+          const rawSalary = encryptedSalary; // lương thô chưa mã hóa
+          const { initKeys } = await import('../api');
+
+          const encryptor = new JSEncrypt({ default_key_size: '2048' });
+          encryptor.getKey();
+          const pubKey = encryptor.getPublicKey();
+          const privKey = encryptor.getPrivateKey();
+
+          const enc2 = new JSEncrypt();
+          enc2.setPublicKey(pubKey);
+          const newEncSalary = enc2.encrypt(rawSalary);
+          if (!newEncSalary) throw new Error('Mã hóa lương thất bại.');
+
+          const newEncPrivKey = CryptoJS.AES.encrypt(privKey, passwordInput).toString();
+          const token = localStorage.getItem('lab3_access_token') || '';
+          
+          await initKeys(token, { luong: newEncSalary, pubkey: pubKey, enc_privkey: newEncPrivKey });
+
+          localStorage.setItem(`lab4_encrypted_privkey_${user.manv}`, newEncPrivKey);
+          user.pubkey = pubKey;
+          localStorage.setItem('lab3_user', JSON.stringify(user));
+          setEncryptedSalary(newEncSalary);
+          setDecryptedSalary(Number(rawSalary));
+          return;
+        }
+        throw new Error('Không tìm thấy dữ liệu bảo mật. Vui lòng đăng xuất và đăng nhập lại.');
+      }
 
       // Giải mã AES để lấy Private Key gốc
       const bytes = CryptoJS.AES.decrypt(encPrivKey, passwordInput);
       const privKey = bytes.toString(CryptoJS.enc.Utf8);
-      
-      if (!privKey.includes('BEGIN RSA PRIVATE KEY')) throw new Error("Mật khẩu không đúng.");
+      if (!privKey.includes('BEGIN RSA PRIVATE KEY')) throw new Error('Mật khẩu không đúng.');
 
       // Giải mã Lương bằng RSA Private Key
       const dec = new JSEncrypt();
       dec.setPrivateKey(privKey);
       const rawSalary = dec.decrypt(encryptedSalary);
-      
-      if (!rawSalary) throw new Error("Không thể giải mã lương.");
+      if (!rawSalary) throw new Error('Không thể giải mã lương.');
       
       setDecryptedSalary(Number(rawSalary));
     } catch (err) {
@@ -177,21 +204,23 @@ export default function ProfilePage() {
                       {decryptedSalary !== null ? (
                         new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(decryptedSalary)
                       ) : (
-                        <div style={{ display: 'flex', gap: '10px' }}>
-                          <input 
-                            type="password" 
-                            placeholder="Nhập mật khẩu để giải mã"
-                            value={passwordInput}
-                            onChange={e => setPasswordInput(e.target.value)}
-                            style={{ padding: '6px 10px', borderRadius: '4px', border: '1px solid #ccc' }}
-                          />
-                          <button 
-                            onClick={handleDecrypt}
-                            style={{ padding: '6px 12px', background: '#059669', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-                          >
-                            Xem lương
-                          </button>
-                          {error && <span style={{ color: 'red', fontSize: '12px', alignSelf: 'center' }}>{error}</span>}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          <div style={{ display: 'flex', gap: '10px' }}>
+                            <input 
+                              type="password" 
+                              placeholder="Nhập mật khẩu để giải mã"
+                              value={passwordInput}
+                              onChange={e => setPasswordInput(e.target.value)}
+                              style={{ padding: '6px 10px', borderRadius: '4px', border: '1px solid #ccc' }}
+                            />
+                            <button 
+                              onClick={handleDecrypt}
+                              style={{ padding: '6px 12px', background: '#059669', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                            >
+                              Xem lương
+                            </button>
+                            {error && <span style={{ color: 'red', fontSize: '12px', alignSelf: 'center' }}>{error}</span>}
+                          </div>
                         </div>
                       )}
                     </td>

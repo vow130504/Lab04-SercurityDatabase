@@ -21,6 +21,12 @@ export class AuthController {
     return this.authService.getSalary(user.manv);
   }
 
+  @Post('init-keys')
+  @UseGuards(JwtAuthGuard)
+  initKeys(@CurrentUser() user: AuthUser, @Body() payload: { luong: string; pubkey: string; enc_privkey: string }) {
+    return this.authService.initKeys(user, payload);
+  }
+
   @Post('employee')
   async createEmployee(@Body() body: any) {
     // Gọi SP tạo nhân viên
