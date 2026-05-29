@@ -382,7 +382,7 @@ export async function updatePublicKey(token: string, pubkey: string): Promise<vo
 
 export async function createEmployee(
   token: string | null,
-  payload: { MANV?: string | null; HOTEN: string; EMAIL: string; LUONG?: string | null; TENDN: string; MK: string; PUBKEY: string; VAITRO?: number | boolean }
+  payload: { MANV?: string | null; HOTEN: string; EMAIL: string; LUONG?: string | null; TENDN: string; MK: string; PUBKEY: string; ENC_PRIVKEY?: string; VAITRO?: number | boolean }
 ) {
   const response = await fetch(`${API_BASE_URL}/auth/employee`, {
     method: 'POST',
