@@ -940,3 +940,31 @@ BEGIN
     UPDATE NHANVIEN SET PUBKEY = @PUBKEY WHERE MANV = @MANV;
 END
 GO
+
+
+
+
+-- Cập nhật chỉ Họ tên và Email (Giữ nguyên Lương và Vai trò cũ trong CSDL bằng cách truyền NULL)
+EXEC SP_UPD_NHANVIEN 
+    @MANV = 'NV03', 
+    @HOTEN = N'Nguyễn Mai Anh (Tên mới)', 
+    @EMAIL = 'nma_new@gmail.com', 
+    @LUONG = NULL,  -- Giữ nguyên bản mã lương cũ
+    @VAITRO = NULL; -- Giữ nguyên vai trò cũ
+GO
+SELECT * FROM NHANVIEN
+GO
+
+-- Thăng cấp quyền Admin cho nhân viên NV02
+EXEC SP_UPD_VAITRO_NHANVIEN 
+    @MANV = 'NV02', 
+    @VAITRO = 1;
+GO
+
+-- Giáng quyền nhân viên NV03 xuống làm User bình thường
+EXEC SP_UPD_VAITRO_NHANVIEN 
+    @MANV = 'NV03', 
+    @VAITRO = 0;
+GO
+SELECT * FROM NHANVIEN
+GO
