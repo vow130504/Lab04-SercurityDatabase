@@ -486,8 +486,8 @@ CREATE OR ALTER PROCEDURE SP_INS_SINHVIEN
     @DIACHI NVARCHAR(200) = NULL,
     @MALOP VARCHAR(20),
     @TENDN NVARCHAR(100),
-    @MK VARCHAR(100),
-    @MANV VARCHAR(20) -- Mã nhân viên đang thực hiện thao tác
+    @MK VARCHAR(MAX), 
+    @MANV VARCHAR(20)
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -508,7 +508,7 @@ BEGIN
 
     -- Thêm sinh viên, Mật khẩu mặc định sẽ băm bằng SHA1 giống yêu cầu chung
     INSERT INTO SINHVIEN (MASV, HOTEN, NGAYSINH, DIACHI, MALOP, TENDN, MATKHAU)
-    VALUES (@MASV, @HOTEN, @NGAYSINH, @DIACHI, @MALOP, @TENDN, HASHBYTES('SHA1', @MK));
+    VALUES (@MASV, @HOTEN, @NGAYSINH, @DIACHI, @MALOP, @TENDN, CONVERT(VARBINARY(MAX), @MK, 2));
 
     PRINT N'Thêm sinh viên thành công!';
 END
@@ -815,38 +815,39 @@ INSERT INTO LOP (MALOP, TENLOP, MANV) VALUES
 ('L10', N'Thiết kế đồ họa 1', 'NV01');
 
 -- Bảng SINHVIEN
+GO 
 INSERT INTO SINHVIEN (MASV, HOTEN, NGAYSINH, DIACHI, MALOP, TENDN, MATKHAU) VALUES 
-('SV01', N'Nguyễn Văn An', '2004-01-15', N'TP.HCM', 'L01', 'nvan', HASHBYTES('SHA1', 'pass123')),
-('SV02', N'Trần Thị Bình', '2004-05-20', N'Hà Nội', 'L01', 'ttbinh', HASHBYTES('SHA1', 'pass123')),
-('SV03', N'Lê Minh Cường', '2004-03-10', N'Đà Nẵng', 'L02', 'lmcuong', HASHBYTES('SHA1', 'pass123')),
-('SV04', N'Phạm Hồng Đào', '2004-11-25', N'Cần Thơ', 'L03', 'phdao', HASHBYTES('SHA1', 'pass123')),
-('SV05', N'Hoàng Gia Bảo', '2004-07-12', N'Hải Phòng', 'L02', 'hgbao', HASHBYTES('SHA1', 'pass123')),
-('SV06', N'Vũ Kim Liên', '2004-09-30', N'Huế', 'L04', 'vklien', HASHBYTES('SHA1', 'pass123')),
-('SV07', N'Đặng Quốc Anh', '2004-12-05', N'Bình Dương', 'L05', 'dqanh', HASHBYTES('SHA1', 'pass123')),
-('SV08', N'Lý Thu Thảo', '2004-02-28', N'Đồng Nai', 'L06', 'ltthao', HASHBYTES('SHA1', 'pass123')),
-('SV09', N'Bùi Tiến Dũng', '2004-08-14', N'Vũng Tàu', 'L07', 'btdung', HASHBYTES('SHA1', 'pass123')),
-('SV10', N'Ngô Bảo Châu', '2004-10-22', N'Nghệ An', 'L08', 'nbchau', HASHBYTES('SHA1', 'pass123')),
-('SV11', N'Lê Thành Nam', '2004-02-12', N'Bình Phước', 'L01', 'ltnam', HASHBYTES('SHA1', 'pass123')),
-('SV12', N'Phạm Minh Tuyết', '2004-06-25', N'Long An', 'L02', 'pmtuyet', HASHBYTES('SHA1', 'pass123')),
-('SV13', N'Nguyễn Hoàng Nam', '2004-09-14', N'Tiền Giang', 'L03', 'nhnam', HASHBYTES('SHA1', 'pass123')),
-('SV14', N'Trần Bảo Ngọc', '2004-12-01', N'Tây Ninh', 'L04', 'tbngoc', HASHBYTES('SHA1', 'pass123')),
-('SV15', N'Đỗ Minh Quân', '2004-03-22', N'Bến Tre', 'L05', 'dmquan', HASHBYTES('SHA1', 'pass123')),
-('SV16', N'Trương Mỹ Linh', '2004-05-30', N'Sóc Trăng', 'L06', 'tmlinh', HASHBYTES('SHA1', 'pass123')),
-('SV17', N'Lý Hải Đăng', '2004-08-18', N'Trà Vinh', 'L07', 'lhdang', HASHBYTES('SHA1', 'pass123')),
-('SV18', N'Vương Thúy Vy', '2004-01-05', N'Vĩnh Long', 'L08', 'vtvy', HASHBYTES('SHA1', 'pass123')),
-('SV19', N'Đặng Văn Hùng', '2004-04-20', N'Bạc Liêu', 'L09', 'dvhung', HASHBYTES('SHA1', 'pass123')),
-('SV20', N'Mai Phương Thảo', '2004-07-28', N'Cà Mau', 'L10', 'mpthao', HASHBYTES('SHA1', 'pass123')),
-('SV21', N'Tạ Quang Thắng', '2004-10-15', N'Quảng Nam', 'L09', 'tqthang', HASHBYTES('SHA1', 'pass123')),
-('SV22', N'Phan Thanh Vân', '2004-11-12', N'Quảng Ngãi', 'L10', 'ptvan', HASHBYTES('SHA1', 'pass123')),
-('SV23', N'Bùi Xuân Phái', '2004-02-09', N'Bình Định', 'L01', 'bxphai', HASHBYTES('SHA1', 'pass123')),
-('SV24', N'Hà Thị Liên', '2004-05-17', N'Phú Yên', 'L02', 'htlien', HASHBYTES('SHA1', 'pass123')),
-('SV25', N'Cao Văn Lầu', '2004-08-23', N'Khánh Hòa', 'L03', 'cvlau', HASHBYTES('SHA1', 'pass123')),
-('SV26', N'Diệp Bảo Kim', '2004-12-30', N'Ninh Thuận', 'L04', 'dbkim', HASHBYTES('SHA1', 'pass123')),
-('SV27', N'Lương Thế Vinh', '2004-03-08', N'Bình Thuận', 'L05', 'ltvinh', HASHBYTES('SHA1', 'pass123')),
-('SV28', N'Quách Gia Bảo', '2004-06-19', N'Gia Lai', 'L06', 'qgbao', HASHBYTES('SHA1', 'pass123')),
-('SV29', N'Trịnh Công Sơn', '2004-09-27', N'Đắk Lắk', 'L07', 'tcson', HASHBYTES('SHA1', 'pass123')),
-('SV30', N'Lâm Thanh Mỹ', '2004-01-11', N'Lâm Đồng', 'L08', 'ltmy', HASHBYTES('SHA1', 'pass123'));
-
+('SV01', N'Nguyễn Văn An', '2004-01-15', N'TP.HCM', 'L01', 'nvan', CONVERT(VARBINARY(MAX), '7c4a8d09ca3762af61e59520943dc26494f8941b', 2)),
+('SV02', N'Trần Thị Bình', '2004-05-20', N'Hà Nội', 'L01', 'ttbinh', CONVERT(VARBINARY(MAX), '7c4a8d09ca3762af61e59520943dc26494f8941b', 2)),
+('SV03', N'Lê Minh Cường', '2004-03-10', N'Đà Nẵng', 'L02', 'lmcuong', CONVERT(VARBINARY(MAX), '7c4a8d09ca3762af61e59520943dc26494f8941b', 2)),
+('SV04', N'Phạm Hồng Đào', '2004-11-25', N'Cần Thơ', 'L03', 'phdao', CONVERT(VARBINARY(MAX), '7c4a8d09ca3762af61e59520943dc26494f8941b', 2)),
+('SV05', N'Hoàng Gia Bảo', '2004-07-12', N'Hải Phòng', 'L02', 'hgbao', CONVERT(VARBINARY(MAX), '7c4a8d09ca3762af61e59520943dc26494f8941b', 2)),
+('SV06', N'Vũ Kim Liên', '2004-09-30', N'Huế', 'L04', 'vklien', CONVERT(VARBINARY(MAX), '7c4a8d09ca3762af61e59520943dc26494f8941b', 2)),
+('SV07', N'Đặng Quốc Anh', '2004-12-05', N'Bình Dương', 'L05', 'dqanh', CONVERT(VARBINARY(MAX), '7c4a8d09ca3762af61e59520943dc26494f8941b', 2)),
+('SV08', N'Lý Thu Thảo', '2004-02-28', N'Đồng Nai', 'L06', 'ltthao', CONVERT(VARBINARY(MAX), '7c4a8d09ca3762af61e59520943dc26494f8941b', 2)),
+('SV09', N'Bùi Tiến Dũng', '2004-08-14', N'Vũng Tàu', 'L07', 'btdung', CONVERT(VARBINARY(MAX), '7c4a8d09ca3762af61e59520943dc26494f8941b', 2)),
+('SV10', N'Ngô Bảo Châu', '2004-10-22', N'Nghệ An', 'L08', 'nbchau', CONVERT(VARBINARY(MAX), '7c4a8d09ca3762af61e59520943dc26494f8941b', 2)),
+('SV11', N'Lê Thành Nam', '2004-02-12', N'Bình Phước', 'L01', 'ltnam', CONVERT(VARBINARY(MAX), '7c4a8d09ca3762af61e59520943dc26494f8941b', 2)),
+('SV12', N'Phạm Minh Tuyết', '2004-06-25', N'Long An', 'L02', 'pmtuyet', CONVERT(VARBINARY(MAX), '7c4a8d09ca3762af61e59520943dc26494f8941b', 2)),
+('SV13', N'Nguyễn Hoàng Nam', '2004-09-14', N'Tiền Giang', 'L03', 'nhnam', CONVERT(VARBINARY(MAX), '7c4a8d09ca3762af61e59520943dc26494f8941b', 2)),
+('SV14', N'Trần Bảo Ngọc', '2004-12-01', N'Tây Ninh', 'L04', 'tbngoc', CONVERT(VARBINARY(MAX), '7c4a8d09ca3762af61e59520943dc26494f8941b', 2)),
+('SV15', N'Đỗ Minh Quân', '2004-03-22', N'Bến Tre', 'L05', 'dmquan', CONVERT(VARBINARY(MAX), '7c4a8d09ca3762af61e59520943dc26494f8941b', 2)),
+('SV16', N'Trương Mỹ Linh', '2004-05-30', N'Sóc Trăng', 'L06', 'tmlinh', CONVERT(VARBINARY(MAX), '7c4a8d09ca3762af61e59520943dc26494f8941b', 2)),
+('SV17', N'Lý Hải Đăng', '2004-08-18', N'Trà Vinh', 'L07', 'lhdang', CONVERT(VARBINARY(MAX), '7c4a8d09ca3762af61e59520943dc26494f8941b', 2)),
+('SV18', N'Vương Thúy Vy', '2004-01-05', N'Vĩnh Long', 'L08', 'vtvy', CONVERT(VARBINARY(MAX), '7c4a8d09ca3762af61e59520943dc26494f8941b', 2)),
+('SV19', N'Đặng Văn Hùng', '2004-04-20', N'Bạc Liêu', 'L09', 'dvhung', CONVERT(VARBINARY(MAX), '7c4a8d09ca3762af61e59520943dc26494f8941b', 2)),
+('SV20', N'Mai Phương Thảo', '2004-07-28', N'Cà Mau', 'L10', 'mpthao', CONVERT(VARBINARY(MAX), '7c4a8d09ca3762af61e59520943dc26494f8941b', 2)),
+('SV21', N'Tạ Quang Thắng', '2004-10-15', N'Quảng Nam', 'L09', 'tqthang', CONVERT(VARBINARY(MAX), '7c4a8d09ca3762af61e59520943dc26494f8941b', 2)),
+('SV22', N'Phan Thanh Vân', '2004-11-12', N'Quảng Ngãi', 'L10', 'ptvan', CONVERT(VARBINARY(MAX), '7c4a8d09ca3762af61e59520943dc26494f8941b', 2)),
+('SV23', N'Bùi Xuân Phái', '2004-02-09', N'Bình Định', 'L01', 'bxphai', CONVERT(VARBINARY(MAX), '7c4a8d09ca3762af61e59520943dc26494f8941b', 2)),
+('SV24', N'Hà Thị Liên', '2004-05-17', N'Phú Yên', 'L02', 'htlien', CONVERT(VARBINARY(MAX), '7c4a8d09ca3762af61e59520943dc26494f8941b', 2)),
+('SV25', N'Cao Văn Lầu', '2004-08-23', N'Khánh Hòa', 'L03', 'cvlau', CONVERT(VARBINARY(MAX), '7c4a8d09ca3762af61e59520943dc26494f8941b', 2)),
+('SV26', N'Diệp Bảo Kim', '2004-12-30', N'Ninh Thuận', 'L04', 'dbkim', CONVERT(VARBINARY(MAX), '7c4a8d09ca3762af61e59520943dc26494f8941b', 2)),
+('SV27', N'Lương Thế Vinh', '2004-03-08', N'Bình Thuận', 'L05', 'ltvinh', CONVERT(VARBINARY(MAX), '7c4a8d09ca3762af61e59520943dc26494f8941b', 2)),
+('SV28', N'Quách Gia Bảo', '2004-06-19', N'Gia Lai', 'L06', 'qgbao', CONVERT(VARBINARY(MAX), '7c4a8d09ca3762af61e59520943dc26494f8941b', 2)),
+('SV29', N'Trịnh Công Sơn', '2004-09-27', N'Đắk Lắk', 'L07', 'tcson', CONVERT(VARBINARY(MAX), '7c4a8d09ca3762af61e59520943dc26494f8941b', 2)),
+('SV30', N'Lâm Thanh Mỹ', '2004-01-11', N'Lâm Đồng', 'L08', 'ltmy', CONVERT(VARBINARY(MAX), '7c4a8d09ca3762af61e59520943dc26494f8941b', 2));
+GO
 -- Bảng HOCPHAN
 INSERT INTO HOCPHAN (MAHP, TENHP, SOTC) VALUES 
 ('HP01', N'Cơ sở dữ liệu', 4),
@@ -881,17 +882,20 @@ EXEC SP_SEL_SINHVIEN_BY_NHANVIEN_LOP 'NV02', 'L01';
 -- 2. NV02 Thêm 1 sinh viên mới vào lớp L01 (Thành công vì NV02 quản lý L01)
 EXEC SP_INS_SINHVIEN 
     @MASV = 'SV99', @HOTEN = N'Test Sinh Viên', @NGAYSINH = '2004-01-01', 
-    @DIACHI = N'TP.HCM', @MALOP = 'L01', @TENDN = 'testsv', @MK = 'pass123', 
+    @DIACHI = N'TP.HCM', @MALOP = 'L01', @TENDN = 'testsv', 
+    @MK = '7c4a8d09ca3762af61e59520943dc26494f8941b', -- Đã thay thế bằng chuỗi băm SHA1 của 'pass123'
     @MANV = 'NV02';
 GO
-SELECT * FROM SINHVIEN
+SELECT * FROM SINHVIEN WHERE MASV = 'SV99';
 GO
 
 -- 3. NV02 Thử thêm 1 sinh viên vào lớp L02 (SẼ BÁO LỖI vì NV02 không quản lý L02)
 EXEC SP_INS_SINHVIEN 
     @MASV = 'SV98', @HOTEN = N'Test Lỗi', @NGAYSINH = '2004-01-01', 
-    @DIACHI = N'TP.HCM', @MALOP = 'L02', @TENDN = 'testloi', @MK = 'pass123', 
+    @DIACHI = N'TP.HCM', @MALOP = 'L02', @TENDN = 'testloi', 
+    @MK = '7c4a8d09ca3762af61e59520943dc26494f8941b', -- Đã thay thế bằng chuỗi băm SHA1 của 'pass123'
     @MANV = 'NV02';
+GO
 
 -- 4. NV02 Chỉnh sửa thông tin sinh viên SV99
 EXEC SP_UPD_SINHVIEN 
