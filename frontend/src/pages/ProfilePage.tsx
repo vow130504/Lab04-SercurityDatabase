@@ -12,10 +12,13 @@ export default function ProfilePage() {
 
   const [encryptedSalary, setEncryptedSalary] = useState<string | null>(null);
   const [decryptedSalary, setDecryptedSalary] = useState<number | null>(null);
+  const [salaryNotSet, setSalaryNotSet] = useState(false); // lương chưa có hoặc chưa mã hóa RSA
   const [passwordInput, setPasswordInput] = useState('');
   
   const [loadingSalary, setLoadingSalary] = useState(false);
   const [error, setError] = useState('');
+
+  const [needsKeyInit, setNeedsKeyInit] = useState(false);
 
   useEffect(() => {
     const storedToken = localStorage.getItem('lab3_access_token');
@@ -27,8 +30,13 @@ export default function ProfilePage() {
       return; 
     }
     
-    setUser(JSON.parse(storedUser));
-    fetchEncryptedSalary(storedToken);
+    const userObj = JSON.parse(storedUser);
+    setUser(userObj);
+    if (!userObj.pubkey || userObj.pubkey.trim() === '') {
+      setNeedsKeyInit(true);
+    } else {
+      fetchEncryptedSalary(storedToken);
+    }
   }, [navigate]);
 
   // 1. Chỉ gọi API lấy chuỗi mã hóa
@@ -36,13 +44,52 @@ export default function ProfilePage() {
     setLoadingSalary(true);
     try {
       const enc = await getSalary(currentToken);
-      setEncryptedSalary(enc);
+      // RSA 2048-bit cipher khi Base64 luôn dài >= 100 ký tự.
+      // Nếu ngắn hơn = lương chưa được mã hóa RSA (nhân viên mới hoặc chưa có lương)
+      if (!enc || enc.trim().length < 100) {
+        setSalaryNotSet(true);
+      } else {
+        setEncryptedSalary(enc);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Lỗi lấy dữ liệu lương.');
     } finally {
       setLoadingSalary(false);
     }
   }
+
+  const handleInitKeys = async () => {
+    if (!passwordInput || !user) return;
+    setError('');
+    
+    try {
+      const { initKeys } = await import('../api');
+
+      const encryptor = new JSEncrypt({ default_key_size: '2048' });
+      encryptor.getKey();
+      const pubKey = encryptor.getPublicKey();
+      const privKey = encryptor.getPrivateKey();
+
+      const newEncPrivKey = CryptoJS.AES.encrypt(privKey, passwordInput).toString();
+      const token = localStorage.getItem('lab3_access_token') || '';
+      
+      // Khởi tạo key cho user mới, truyền lương bằng null hoặc '' để API biết
+      await initKeys(token, { luong: '', pubkey: pubKey, enc_privkey: newEncPrivKey });
+
+      localStorage.setItem(`lab4_encrypted_privkey_${user.manv}`, newEncPrivKey);
+      
+      const updatedUser = { ...user, pubkey: pubKey };
+      user.pubkey = pubKey;
+      localStorage.setItem('lab3_user', JSON.stringify(updatedUser));
+      setUser(updatedUser);
+      setNeedsKeyInit(false);
+      setSalaryNotSet(true); // Mới tạo key nên chắc chắn chưa có lương mã hóa
+      setPasswordInput('');
+      alert('Tạo khóa bảo mật thành công! Admin giờ đã có thể cấp lương cho bạn.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Tạo khóa thất bại.');
+    }
+  };
 
   // 2. Hàm giải mã tại Client - user chỉ cần nhập mật khẩu, mọi thứ tự động
   const handleDecrypt = async () => {
@@ -53,33 +100,6 @@ export default function ProfilePage() {
       const encPrivKey = localStorage.getItem(`lab4_encrypted_privkey_${user.manv}`);
 
       if (!encPrivKey) {
-        // TH: Tài khoản tạo bằng SQL, chưa có ENC_PRIVKEY - tự động khởi tạo ngầm
-        if (!user.pubkey || user.pubkey.trim() === '') {
-          const rawSalary = encryptedSalary; // lương thô chưa mã hóa
-          const { initKeys } = await import('../api');
-
-          const encryptor = new JSEncrypt({ default_key_size: '2048' });
-          encryptor.getKey();
-          const pubKey = encryptor.getPublicKey();
-          const privKey = encryptor.getPrivateKey();
-
-          const enc2 = new JSEncrypt();
-          enc2.setPublicKey(pubKey);
-          const newEncSalary = enc2.encrypt(rawSalary);
-          if (!newEncSalary) throw new Error('Mã hóa lương thất bại.');
-
-          const newEncPrivKey = CryptoJS.AES.encrypt(privKey, passwordInput).toString();
-          const token = localStorage.getItem('lab3_access_token') || '';
-          
-          await initKeys(token, { luong: newEncSalary, pubkey: pubKey, enc_privkey: newEncPrivKey });
-
-          localStorage.setItem(`lab4_encrypted_privkey_${user.manv}`, newEncPrivKey);
-          user.pubkey = pubKey;
-          localStorage.setItem('lab3_user', JSON.stringify(user));
-          setEncryptedSalary(newEncSalary);
-          setDecryptedSalary(Number(rawSalary));
-          return;
-        }
         throw new Error('Không tìm thấy dữ liệu bảo mật. Vui lòng đăng xuất và đăng nhập lại.');
       }
 
@@ -201,8 +221,32 @@ export default function ProfilePage() {
                   <tr style={{ borderBottom: '1px solid #e0e0e0', background: '#f0fdf4' }}>
                     <td style={{ padding: '15px 20px', color: '#047857', fontWeight: 'bold' }}>Lương cơ bản</td>
                     <td style={{ padding: '15px 20px', color: '#059669', fontWeight: 'bold', fontSize: '16px' }}>
-                      {decryptedSalary !== null ? (
+                      {needsKeyInit ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          <span style={{ color: '#d97706', fontSize: '13px' }}>Tài khoản chưa có khóa bảo mật. Vui lòng tạo khóa để Admin có thể cấp lương.</span>
+                          <div style={{ display: 'flex', gap: '10px' }}>
+                            <input 
+                              type="password" 
+                              placeholder="Nhập mật khẩu của bạn"
+                              value={passwordInput}
+                              onChange={e => setPasswordInput(e.target.value)}
+                              style={{ padding: '6px 10px', borderRadius: '4px', border: '1px solid #ccc' }}
+                            />
+                            <button 
+                              onClick={handleInitKeys}
+                              style={{ padding: '6px 12px', background: '#d97706', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                            >
+                              Tạo khóa
+                            </button>
+                            {error && <span style={{ color: 'red', fontSize: '12px', alignSelf: 'center' }}>{error}</span>}
+                          </div>
+                        </div>
+                      ) : decryptedSalary !== null ? (
                         new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(decryptedSalary)
+                      ) : salaryNotSet ? (
+                        <span style={{ color: '#999', fontStyle: 'italic', fontWeight: 'normal' }}>Chưa có thông tin lương</span>
+                      ) : loadingSalary ? (
+                        <span style={{ color: '#999' }}>Đang tải...</span>
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                           <div style={{ display: 'flex', gap: '10px' }}>
@@ -215,7 +259,7 @@ export default function ProfilePage() {
                             />
                             <button 
                               onClick={handleDecrypt}
-                              style={{ padding: '6px 12px', background: '#059669', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                              style={{ padding: '6px 12px', background: '#059669', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', whiteSpace: 'nowrap' }}
                             >
                               Xem lương
                             </button>

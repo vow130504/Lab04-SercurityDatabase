@@ -24,6 +24,7 @@ CREATE TABLE NHANVIEN (
     TENDN NVARCHAR(100) NOT NULL UNIQUE,
     MATKHAU VARBINARY(MAX) NOT NULL, -- Lưu trữ mật khẩu băm SHA1
     PUBKEY NVARCHAR(MAX), -- Public Key PEM string từ client (Lab 4)
+    ENC_PRIVKEY NVARCHAR(MAX), -- Private Key mã hóa bằng mật khẩu của client (Lab 4)
     VAITRO BIT NOT NULL CONSTRAINT DF_NHANVIEN_VAITRO DEFAULT (0)
 );
 
@@ -145,6 +146,7 @@ BEGIN
         TENDN,
         LUONG AS LUONG,
         PUBKEY,
+        ENC_PRIVKEY,
         VAITRO
     FROM NHANVIEN
     WHERE MANV = @MANV;
@@ -327,6 +329,7 @@ BEGIN
         EMAIL,
         TENDN,
         PUBKEY,
+        ENC_PRIVKEY,
         VAITRO
     FROM NHANVIEN
     WHERE MANV = @MANV AND MATKHAU = CONVERT(VARBINARY(MAX), @MK, 2);

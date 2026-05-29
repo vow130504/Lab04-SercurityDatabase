@@ -209,7 +209,10 @@ export default function ClassStudentsPage() {
         alert('Cập nhật sinh viên thành công!');
       } else {
         // Create
-        await createStudent(token, formData);
+        // [Lab 4] Hash SHA1 mật khẩu tại CLIENT trước khi gửi lên server
+        // SP_INS_SINHVIEN sẽ nhận hex SHA1 và lưu trực tiếp (không hash lại ở server)
+        const hashedMK = CryptoJS.SHA1(formData.MK).toString(CryptoJS.enc.Hex);
+        await createStudent(token, { ...formData, MK: hashedMK });
         alert('Thêm sinh viên thành công!');
       }
       handleCloseModal();

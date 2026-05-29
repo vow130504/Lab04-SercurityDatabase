@@ -24,6 +24,24 @@ export default function LoginPage() {
       // Gửi mật khẩu đã băm xuống Backend
       const result = await login(manv, hashedPassword);
       
+      // Nếu user chưa có pubkey (tài khoản tạo từ SQL), tự động tạo khóa tại đây
+      if (!result.user.pubkey || result.user.pubkey.trim() === '') {
+        const JSEncrypt = (await import('jsencrypt')).default;
+        const { initKeys } = await import('../api');
+        
+        const encryptor = new JSEncrypt({ default_key_size: '2048' });
+        encryptor.getKey();
+        const pubKey = encryptor.getPublicKey();
+        const privKey = encryptor.getPrivateKey();
+
+        const newEncPrivKey = CryptoJS.AES.encrypt(privKey, matkhau).toString();
+        
+        await initKeys(result.accessToken, { luong: '', pubkey: pubKey, enc_privkey: newEncPrivKey });
+
+        result.user.pubkey = pubKey;
+        result.user.enc_privkey = newEncPrivKey;
+      }
+      
       localStorage.setItem('lab3_access_token', result.accessToken);
       localStorage.setItem('lab3_user', JSON.stringify(result.user));
       
@@ -32,7 +50,12 @@ export default function LoginPage() {
         localStorage.setItem(`lab4_encrypted_privkey_${result.user.manv}`, result.user.enc_privkey);
       }
       
-      navigate('/classes');
+      // Điều hướng tùy theo vai trò
+      if (result.user.isadmin) {
+        navigate('/employees');
+      } else {
+        navigate('/classes');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Đăng nhập thất bại.');
     } finally {

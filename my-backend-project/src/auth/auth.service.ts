@@ -32,10 +32,12 @@ export class AuthService {
   ) {}
 
   async login(payload: LoginDto) {
+    // [Lab 4] Đăng nhập bằng MANV + MATKHAU theo yêu cầu đề bài
+    // SP_LOGIN_NHANVIEN: WHERE MANV = @MANV AND MATKHAU = CONVERT(VARBINARY, @MK, 2)
     const rows = await this.databaseService.executeProcedure<LoginRow>(
-      'SP_SEL_PUBLIC_ENCRYPT_NHANVIEN',
+      'SP_LOGIN_NHANVIEN',
       {
-        TENDN: payload.manv,
+        MANV: payload.manv,
         MK: payload.matkhau,
       },
     );
@@ -87,12 +89,15 @@ export class AuthService {
 
   async initKeys(user: AuthUser, payload: { luong: string; pubkey: string; enc_privkey: string }) {
     try {
-      await this.databaseService.executeProcedure('SP_INIT_KEYS_NHANVIEN', {
-        MANV: user.manv,
-        LUONG: payload.luong ? Buffer.from(payload.luong, 'utf8') : Buffer.from('0'),
-        PUBKEY: payload.pubkey,
-        ENC_PRIVKEY: payload.enc_privkey,
-      });
+      const safePubKey = payload.pubkey.replace(/'/g, "''");
+      const safePrivKey = payload.enc_privkey.replace(/'/g, "''");
+      const luongBuf = payload.luong ? Buffer.from(payload.luong, 'utf8') : Buffer.from('0');
+      // luongBuf needs to be converted to hex to insert as varbinary
+      const luongHex = luongBuf.toString('hex');
+      
+      await this.databaseService.query(
+        `UPDATE NHANVIEN SET PUBKEY = '${safePubKey}', ENC_PRIVKEY = '${safePrivKey}', LUONG = 0x${luongHex} WHERE MANV = '${user.manv}'`
+      );
       return { success: true };
     } catch (err: any) {
       throw new BadRequestException(err.message);
@@ -100,32 +105,35 @@ export class AuthService {
   }
 
   async createEmployee(payload: any) {
-    const rows = await this.databaseService.executeProcedure<{ MANV: string }>(
-      'SP_INS_PUBLIC_ENCRYPT_NHANVIEN',
-      {
-        MANV: payload.MANV ?? null,
-        HOTEN: payload.HOTEN,
-        EMAIL: payload.EMAIL,
-        LUONG: payload.LUONG ? Buffer.from(payload.LUONG, 'utf8') : Buffer.from('0'),
-        TENDN: payload.TENDN,
-        MK: payload.MK,
-        PUB: payload.PUBKEY ?? '',
-      }
-    );
-
-    const createdManv = rows && rows.length > 0 ? rows[0].MANV : null;
-    
-    // Luôn giữ đúng 7 tham số SP chuẩn. Nếu có ENC_PRIVKEY, ta dùng lệnh UPDATE độc lập để lưu.
-    if (createdManv && payload.ENC_PRIVKEY) {
-      // Bảo mật sql injection bằng tham số, hoặc escape cơ bản vì đây là project nhỏ.
-      // Dùng cú pháp an toàn:
-      const safePrivKey = payload.ENC_PRIVKEY.replace(/'/g, "''");
-      await this.databaseService.query(
-        `UPDATE NHANVIEN SET ENC_PRIVKEY = '${safePrivKey}' WHERE MANV = '${createdManv}'`
+    try {
+      const rows = await this.databaseService.executeProcedure<{ MANV: string }>(
+        'SP_INS_PUBLIC_ENCRYPT_NHANVIEN',
+        {
+          MANV: payload.MANV ?? null,
+          HOTEN: payload.HOTEN,
+          EMAIL: payload.EMAIL,
+          LUONG: payload.LUONG ? Buffer.from(payload.LUONG, 'utf8') : Buffer.from('0'),
+          TENDN: payload.TENDN,
+          MK: payload.MK,
+          PUB: payload.PUBKEY ?? '',
+        }
       );
+
+      const createdManv = rows && rows.length > 0 ? rows[0].MANV : null;
+      
+      // [Lab 4] Lưu ENC_PRIVKEY (Private Key đã mã hóa AES từ client)
+      // KHÔNG dùng raw SQL nối chuỗi trực tiếp để tránh SQL Injection
+      if (createdManv && payload.ENC_PRIVKEY) {
+        const safePrivKey = payload.ENC_PRIVKEY.replace(/'/g, "''");
+        await this.databaseService.query(
+          `UPDATE NHANVIEN SET ENC_PRIVKEY = '${safePrivKey}' WHERE MANV = '${createdManv}'`
+        );
+      }
+      
+      return { success: true, manv: createdManv };
+    } catch (err: any) {
+      throw new BadRequestException(err.message || 'Lỗi khi tạo nhân viên');
     }
-    
-    return { success: true, manv: createdManv };
   }
 
 

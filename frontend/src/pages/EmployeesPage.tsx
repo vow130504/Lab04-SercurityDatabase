@@ -224,7 +224,7 @@ export default function EmployeesPage() {
             </div>
           </div>
           <nav className="sidebar-nav">
-            <button className="sidebar-tab" onClick={() => navigate('/classes')}>
+            <button className="sidebar-tab" type="button" onClick={() => navigate('/classes')}>
               Quản lý lớp học
             </button>
             <button className="sidebar-tab active" type="button">
