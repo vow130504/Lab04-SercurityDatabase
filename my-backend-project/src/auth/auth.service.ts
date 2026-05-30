@@ -192,10 +192,18 @@ export class AuthService {
 
   async updateEmployee(
     manv: string,
-    payload: { HOTEN: string; EMAIL: string; LUONG?: string; VAITRO?: boolean },
+    payload: { HOTEN: string; EMAIL: string; LUONG?: string; VAITRO?: boolean; TENDN?: string },
     currentUser: AuthUser,
   ) {
     this.assertAdmin(currentUser);
+
+    if (typeof payload.TENDN !== 'undefined') {
+      throw new ForbiddenException('Không được phép chỉnh sửa tên đăng nhập.');
+    }
+
+    if (currentUser.manv === manv && currentUser.isadmin && payload.VAITRO === false) {
+      throw new ForbiddenException('Bạn không thể tự thu hồi quyền admin của chính mình.');
+    }
 
     await this.databaseService.executeProcedure('SP_UPD_NHANVIEN', {
       MANV: manv,
@@ -206,16 +214,7 @@ export class AuthService {
     });
     return { success: true };
   }
-
-  async deleteEmployee(manv: string, currentUser: AuthUser) {
-    this.assertAdmin(currentUser);
-
-    await this.databaseService.executeProcedure('SP_DEL_NHANVIEN', {
-      MANV: manv,
-    });
-    return { success: true };
-  }
-
+  
   async refresh(currentUser: AuthUser) {
     // Read latest data from DB and re-issue JWT with updated role
     const rows = await this.databaseService.executeProcedure<LoginRow>('SP_SEL_NHANVIEN_BY_MANV', {

@@ -1,4 +1,4 @@
---a) Viết script tạo Database có tên QLSVNhom.
+--a) Viết script tạo Database có tên QLSVNhom và tạo mới các Table SINHVIEN, NHANVIEN, LOP, HOCPHAN, BANGDIEM.
 USE master;
 GO
 
@@ -15,7 +15,6 @@ GO
 USE QLSVNhom;
 GO
 
---b) Viết script tạo mới các Table SINHVIEN, NHANVIEN, LOP, HOCPHAN, BANGDIEM.
 CREATE TABLE NHANVIEN (
     MANV VARCHAR(20) PRIMARY KEY,
     HOTEN NVARCHAR(100) NOT NULL,
@@ -25,6 +24,8 @@ CREATE TABLE NHANVIEN (
     MATKHAU VARBINARY(MAX) NOT NULL, -- Lưu trữ mật khẩu băm SHA1
     PUBKEY NVARCHAR(MAX), -- Public Key PEM string từ client (Lab 4)
     ENC_PRIVKEY NVARCHAR(MAX), -- Private Key mã hóa bằng mật khẩu của client (Lab 4)
+
+    -- XỬ LÝ PHÂN QUYỀN: Xác định vai trò của tài khoản (1: Admin, 0: Nhân viên thường)
     VAITRO BIT NOT NULL CONSTRAINT DF_NHANVIEN_VAITRO DEFAULT (0)
 );
 
@@ -62,12 +63,11 @@ CREATE TABLE BANGDIEM (
 );
 GO
 
--- Câu c
--- i) Stored Procedure thêm nhân viên (SP_INS_PUBLIC_NHANVIEN)
+-- Câu b
+-- i) Stored Procedure thêm nhân viên (SP_INS_PUBLIC_ENCRYPT_NHANVIEN)
 USE QLSVNhom;
 GO
 
--- [Câu b.i] - Đặt tên đúng theo yêu cầu đề bài Lab 4
 CREATE OR ALTER PROCEDURE SP_INS_PUBLIC_ENCRYPT_NHANVIEN
     @MANV    VARCHAR(20) = NULL,
     @HOTEN   NVARCHAR(100),
@@ -80,7 +80,7 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    -- Validate required parameters (MANV may be NULL to request auto-generation)
+    -- Xác thực các tham số bắt buộc (MANV có thể là NULL để yêu cầu tạo tự động)
     IF @HOTEN IS NULL OR @TENDN IS NULL OR @MK IS NULL OR @PUB IS NULL
     BEGIN
         RAISERROR(N'Các tham số không được để trống.', 16, 1);
@@ -89,7 +89,7 @@ BEGIN
 
     DECLARE @FINAL_MANV VARCHAR(20);
 
-    -- Auto-generate MANV if not provided (format NVxx, zero-padded 2 digits)
+    -- Tự động tạo MANV nếu chưa được cung cấp (định dạng NVxx)
     IF @MANV IS NULL OR LTRIM(RTRIM(@MANV)) = ''
     BEGIN
         DECLARE @maxNum INT;
@@ -119,9 +119,7 @@ BEGIN
 END
 GO
 
--- ii) Stored dùng để truy vấn dữ liệu nhân viên (NHANVIEN)
-
--- [Câu b.ii] - Đặt tên đúng theo yêu cầu đề bài Lab 4
+-- ii) Stored dùng để truy vấn dữ liệu nhân viên (SP_SEL_PUBLIC_ENCRYPT_NHANVIEN)
 CREATE OR ALTER PROCEDURE SP_SEL_PUBLIC_ENCRYPT_NHANVIEN
     @TENDN  NVARCHAR(100),
     @MK     VARCHAR(MAX)
@@ -133,111 +131,6 @@ BEGIN
 END
 GO
 
-CREATE OR ALTER PROCEDURE SP_SEL_NHANVIEN_BY_MANV
-    @MANV VARCHAR(20)
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    SELECT
-        MANV,
-        HOTEN,
-        EMAIL,
-        TENDN,
-        LUONG AS LUONG,
-        PUBKEY,
-        ENC_PRIVKEY,
-        VAITRO
-    FROM NHANVIEN
-    WHERE MANV = @MANV;
-END
-GO
-
-CREATE OR ALTER PROCEDURE SP_GET_LUONG_ENCRYPT_NHANVIEN
-    @MANV VARCHAR(20)
-AS
-BEGIN
-    SET NOCOUNT ON;
-    -- Trả về chuỗi Lương (từ VARBINARY ép sang VARCHAR)
-    SELECT CAST(LUONG AS VARCHAR(MAX)) AS LUONG_ENC 
-    FROM NHANVIEN 
-    WHERE MANV = @MANV;
-END
-GO
-
-
--- SP Lấy danh sách tất cả nhân viên
-CREATE OR ALTER PROCEDURE SP_SEL_ALL_NHANVIEN
-AS
-BEGIN
-    SET NOCOUNT ON;
-    -- Không trả về Mật khẩu và Lương để bảo mật
-    SELECT MANV, HOTEN, EMAIL, TENDN, VAITRO
-    FROM NHANVIEN
-    ORDER BY MANV;
-END
-GO
-
--- SP Cập nhật thông tin nhân viên cơ bản (Họ tên, Email)
-CREATE OR ALTER PROCEDURE SP_UPD_NHANVIEN
-    @MANV VARCHAR(20),
-    @HOTEN NVARCHAR(100),
-    @EMAIL VARCHAR(20),
-    @LUONG NVARCHAR(MAX) = NULL,
-    @VAITRO BIT = NULL
-AS
-BEGIN
-    SET NOCOUNT ON;
-    IF NOT EXISTS (SELECT 1 FROM NHANVIEN WHERE MANV = @MANV)
-    BEGIN
-        RAISERROR(N'Nhân viên không tồn tại.', 16, 1);
-        RETURN;
-    END
-
-    UPDATE NHANVIEN
-    SET HOTEN = @HOTEN,
-        EMAIL = @EMAIL,
-        LUONG = COALESCE(CAST(@LUONG AS VARBINARY(MAX)), LUONG),
-        VAITRO = COALESCE(@VAITRO, VAITRO)
-    WHERE MANV = @MANV;
-END
-GO
-
--- SP Cập nhật quyền VAITRO của nhân viên (0 = user, 1 = admin)
-CREATE OR ALTER PROCEDURE SP_UPD_VAITRO_NHANVIEN
-    @MANV VARCHAR(20),
-    @VAITRO BIT
-AS
-BEGIN
-    SET NOCOUNT ON;
-
-    IF NOT EXISTS (SELECT 1 FROM NHANVIEN WHERE MANV = @MANV)
-    BEGIN
-        RAISERROR(N'Nhân viên không tồn tại.', 16, 1);
-        RETURN;
-    END
-
-    UPDATE NHANVIEN
-    SET VAITRO = @VAITRO
-    WHERE MANV = @MANV;
-END
-GO
--- SP Xóa nhân viên
-CREATE OR ALTER PROCEDURE SP_DEL_NHANVIEN
-    @MANV VARCHAR(20)
-AS
-BEGIN
-    SET NOCOUNT ON;
-    -- Ràng buộc: Không cho phép xóa nếu nhân viên đang quản lý lớp học
-    IF EXISTS (SELECT 1 FROM LOP WHERE MANV = @MANV)
-    BEGIN
-        RAISERROR(N'Không thể xóa nhân viên này vì đang quản lý lớp học.', 16, 1);
-        RETURN;
-    END
-
-    DELETE FROM NHANVIEN WHERE MANV = @MANV;
-END
-GO
 -- Test 
 
 USE QLSVNhom;
@@ -264,9 +157,6 @@ EXEC SP_INS_PUBLIC_ENCRYPT_NHANVIEN
     @TENDN = N'NVA', 
     @MK = '7c4a8d09ca3762af61e59520943dc26494f8941b',
     @PUB = '';
-GO
-
-EXEC SP_UPD_VAITRO_NHANVIEN 'NV01', 1;
 GO
 
 -- =======================================================
@@ -312,6 +202,7 @@ GO
 -- Kiểm tra cho nhân viên NV05 (Mai Quốc Trung)
 EXEC SP_SEL_PUBLIC_ENCRYPT_NHANVIEN 'MQT', '7c4a8d09ca3762af61e59520943dc26494f8941b';
 GO
+
 -- Câu d
 USE QLSVNhom;
 GO
@@ -333,6 +224,64 @@ BEGIN
         VAITRO
     FROM NHANVIEN
     WHERE MANV = @MANV AND MATKHAU = CONVERT(VARBINARY(MAX), @MK, 2);
+END
+GO
+
+--Xây dựng (lập trình) màn hình quản lý nhân viên
+-- SP Lấy danh sách tất cả nhân viên
+CREATE OR ALTER PROCEDURE SP_SEL_ALL_NHANVIEN
+AS
+BEGIN
+    SET NOCOUNT ON;
+    -- Không trả về Mật khẩu và Lương để bảo mật
+    SELECT MANV, HOTEN, EMAIL, TENDN, VAITRO
+    FROM NHANVIEN
+    ORDER BY MANV;
+END
+GO
+
+-- SP Cập nhật thông tin nhân viên cơ bản (Họ tên, Email, Lương, Vai trò)
+CREATE OR ALTER PROCEDURE SP_UPD_NHANVIEN
+    @MANV VARCHAR(20),
+    @HOTEN NVARCHAR(100),
+    @EMAIL VARCHAR(20),
+    @LUONG NVARCHAR(MAX) = NULL,
+    @VAITRO BIT = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF NOT EXISTS (SELECT 1 FROM NHANVIEN WHERE MANV = @MANV)
+    BEGIN
+        RAISERROR(N'Nhân viên không tồn tại.', 16, 1);
+        RETURN;
+    END
+
+    UPDATE NHANVIEN
+    SET HOTEN = @HOTEN,
+        EMAIL = @EMAIL,
+        LUONG = COALESCE(CAST(@LUONG AS VARBINARY(MAX)), LUONG),
+        VAITRO = COALESCE(@VAITRO, VAITRO)
+    WHERE MANV = @MANV;
+END
+GO
+
+-- SP Cập nhật quyền VAITRO của nhân viên (0 = user, 1 = admin)
+CREATE OR ALTER PROCEDURE SP_UPD_VAITRO_NHANVIEN
+    @MANV VARCHAR(20),
+    @VAITRO BIT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM NHANVIEN WHERE MANV = @MANV)
+    BEGIN
+        RAISERROR(N'Nhân viên không tồn tại.', 16, 1);
+        RETURN;
+    END
+
+    UPDATE NHANVIEN
+    SET VAITRO = @VAITRO
+    WHERE MANV = @MANV;
 END
 GO
 
@@ -594,8 +543,7 @@ BEGIN
 END
 GO
 
---Xây dựng (lập trình) nhập bảng điểm của từng sinh viên, 
---trong đó cột điểm thi sẽ được mã hóa bằng chính Public Key 
+--Xây dựng (lập trình) nhập bảng điểm của từng sinh viên, trong đó cột điểm thi sẽ được mã hóa bằng chính Public Key 
 --của nhân viên (đã đăng nhập)
 --SP lấy danh sách học phần
 CREATE OR ALTER PROCEDURE SP_SEL_HOCPHAN
@@ -703,6 +651,60 @@ BEGIN
     LEFT JOIN BANGDIEM B ON B.MASV = S.MASV AND B.MAHP = @MAHP
     WHERE S.MALOP = @MALOP
     ORDER BY S.MASV;
+END
+GO
+
+--SP lấy public key của nhân viên
+CREATE OR ALTER PROCEDURE SP_GET_PUBKEY_NHANVIEN
+    @MANV VARCHAR(20)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT PUBKEY FROM NHANVIEN WHERE MANV = @MANV;
+END
+GO
+
+--SP cập nhật public key của nhân viên
+CREATE OR ALTER PROCEDURE SP_UPDATE_PUBKEY_NHANVIEN
+    @MANV   VARCHAR(20),
+    @PUBKEY NVARCHAR(MAX)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    UPDATE NHANVIEN SET PUBKEY = @PUBKEY WHERE MANV = @MANV;
+END
+GO
+
+--Các SP lấy thông tin nhân viên
+CREATE OR ALTER PROCEDURE SP_SEL_NHANVIEN_BY_MANV
+    @MANV VARCHAR(20)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT
+        MANV,
+        HOTEN,
+        EMAIL,
+        TENDN,
+        LUONG AS LUONG,
+        PUBKEY,
+        ENC_PRIVKEY,
+        VAITRO
+    FROM NHANVIEN
+    WHERE MANV = @MANV;
+END
+GO
+
+CREATE OR ALTER PROCEDURE SP_GET_LUONG_ENCRYPT_NHANVIEN
+    @MANV VARCHAR(20)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    -- Trả về chuỗi Lương (từ VARBINARY ép sang VARCHAR)
+    SELECT CAST(LUONG AS VARCHAR(MAX)) AS LUONG_ENC 
+    FROM NHANVIEN 
+    WHERE MANV = @MANV;
 END
 GO
 
@@ -867,6 +869,39 @@ INSERT INTO HOCPHAN (MAHP, TENHP, SOTC) VALUES
 --Màn hình quản lý đăng nhập xử lý đăng nhập với tài khoản là nhân viên (MANV, MATKHAU)
 EXEC SP_LOGIN_NHANVIEN 'NV02', '7c4a8d09ca3762af61e59520943dc26494f8941b';
 
+--Màn hình quản lý nhân viên
+-- 1. Lấy danh sách tất cả nhân viên
+EXEC SP_SEL_ALL_NHANVIEN;
+
+-- 2. Cập nhật chỉ Họ tên và Email (Giữ nguyên Lương và Vai trò cũ trong CSDL bằng cách truyền NULL)
+EXEC SP_UPD_NHANVIEN 
+    @MANV = 'NV03', 
+    @HOTEN = N'Nguyễn Mai Anh (Tên mới)', 
+    @EMAIL = 'nma_new@gmail.com', 
+    @LUONG = NULL,  -- Giữ nguyên bản mã lương cũ
+    @VAITRO = NULL; -- Giữ nguyên vai trò cũ
+GO
+
+-- Kiểm tra
+SELECT * FROM NHANVIEN
+GO
+
+-- 3. Thăng cấp quyền Admin cho nhân viên NV02
+EXEC SP_UPD_VAITRO_NHANVIEN 
+    @MANV = 'NV01', 
+    @VAITRO = 1;
+GO
+
+-- 4. Giáng quyền nhân viên NV03 xuống làm User bình thường
+EXEC SP_UPD_VAITRO_NHANVIEN 
+    @MANV = 'NV03', 
+    @VAITRO = 0;
+GO
+
+-- Kiểm tra
+SELECT * FROM NHANVIEN
+GO
+
 --Màn hình quản lý lớp học
 EXEC SP_SEL_ALL_LOP;
 EXEC SP_SEL_LOP_BY_NHANVIEN 'NV02';
@@ -920,51 +955,4 @@ EXEC SP_SEL_SINHVIEN_BY_NHANVIEN_LOP 'NV02', 'L01';
 EXEC SP_INS_UPD_BANGDIEM 'NV02', 'SV01', 'HP01', 'BASE64_ENCRYPTED_STRING_FROM_CLIENT';
 GO
 SELECT * FROM BANGDIEM
-GO
-
-CREATE OR ALTER PROCEDURE SP_GET_PUBKEY_NHANVIEN
-    @MANV VARCHAR(20)
-AS
-BEGIN
-    SET NOCOUNT ON;
-    SELECT PUBKEY FROM NHANVIEN WHERE MANV = @MANV;
-END
-GO
-
-CREATE OR ALTER PROCEDURE SP_UPDATE_PUBKEY_NHANVIEN
-    @MANV   VARCHAR(20),
-    @PUBKEY NVARCHAR(MAX)
-AS
-BEGIN
-    SET NOCOUNT ON;
-    UPDATE NHANVIEN SET PUBKEY = @PUBKEY WHERE MANV = @MANV;
-END
-GO
-
-
-
-
--- Cập nhật chỉ Họ tên và Email (Giữ nguyên Lương và Vai trò cũ trong CSDL bằng cách truyền NULL)
-EXEC SP_UPD_NHANVIEN 
-    @MANV = 'NV03', 
-    @HOTEN = N'Nguyễn Mai Anh (Tên mới)', 
-    @EMAIL = 'nma_new@gmail.com', 
-    @LUONG = NULL,  -- Giữ nguyên bản mã lương cũ
-    @VAITRO = NULL; -- Giữ nguyên vai trò cũ
-GO
-SELECT * FROM NHANVIEN
-GO
-
--- Thăng cấp quyền Admin cho nhân viên NV02
-EXEC SP_UPD_VAITRO_NHANVIEN 
-    @MANV = 'NV02', 
-    @VAITRO = 1;
-GO
-
--- Giáng quyền nhân viên NV03 xuống làm User bình thường
-EXEC SP_UPD_VAITRO_NHANVIEN 
-    @MANV = 'NV03', 
-    @VAITRO = 0;
-GO
-SELECT * FROM NHANVIEN
 GO

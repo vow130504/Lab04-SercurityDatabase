@@ -1,4 +1,11 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:4000';
+const REAUTH_STORAGE_KEY = 'lab4_reauth_state';
+const REAUTH_EVENT_NAME = 'lab4:reauth-state-changed';
+
+type ReauthState = {
+  message: string;
+  updatedAt: number;
+};
 
 export type LoginResponse = {
   accessToken: string;
@@ -20,6 +27,15 @@ export type LopItem = {
 };
 
 function parseErrorMessage(errorBody: unknown): string {
+  const normalizedMessage = extractErrorMessage(errorBody);
+  if (normalizedMessage && isReauthMessage(normalizedMessage)) {
+    setGlobalReauthState(normalizedMessage);
+  }
+
+  return normalizedMessage;
+}
+
+function extractErrorMessage(errorBody: unknown): string {
   if (typeof errorBody === 'string') {
     return errorBody;
   }
@@ -36,6 +52,45 @@ function parseErrorMessage(errorBody: unknown): string {
 
   return 'Co loi xay ra. Vui long thu lai.';
 }
+
+function isReauthMessage(message: string): boolean {
+  return message.includes('Hệ thống ghi nhận quyền truy cập của tài khoản này vừa được thay đổi bởi quản trị viên') || message.includes('Tài khoản không còn tồn tại');
+}
+
+function setGlobalReauthState(message: string) {
+  if (typeof window === 'undefined') return;
+
+  const state: ReauthState = {
+    message,
+    updatedAt: Date.now(),
+  };
+
+  localStorage.setItem(REAUTH_STORAGE_KEY, JSON.stringify(state));
+  window.dispatchEvent(new Event(REAUTH_EVENT_NAME));
+}
+
+export function clearGlobalReauthState() {
+  if (typeof window === 'undefined') return;
+
+  localStorage.removeItem(REAUTH_STORAGE_KEY);
+  window.dispatchEvent(new Event(REAUTH_EVENT_NAME));
+}
+
+export function getGlobalReauthState(): ReauthState | null {
+  if (typeof window === 'undefined') return null;
+
+  const rawState = localStorage.getItem(REAUTH_STORAGE_KEY);
+  if (!rawState) return null;
+
+  try {
+    const parsed = JSON.parse(rawState) as ReauthState;
+    return typeof parsed.message === 'string' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export const REAUTH_STATE_EVENT = REAUTH_EVENT_NAME;
 
 export async function login(manv: string, matkhau: string): Promise<LoginResponse> {
   const response = await fetch(`${API_BASE_URL}/auth/login`, {
@@ -444,7 +499,7 @@ export async function getEmployee(token: string, manv: string): Promise<Employee
 export async function updateEmployee(
   token: string,
   manv: string,
-  payload: { HOTEN: string; EMAIL: string; TENDN?: string; LUONG?: string; VAITRO?: boolean },
+  payload: { HOTEN: string; EMAIL: string; LUONG?: string; VAITRO?: boolean },
 ) {
   const response = await fetch(`${API_BASE_URL}/auth/employee/${encodeURIComponent(manv)}`, {
     method: 'PUT',

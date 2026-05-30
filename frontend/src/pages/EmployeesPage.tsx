@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import JSEncrypt from 'jsencrypt';
 import { getAllEmployees, getEmployee, updateEmployee, type EmployeeItem } from '../api';
@@ -27,6 +28,8 @@ export default function EmployeesPage() {
   const [loading, setLoading] = useState(true);
   const [savingManv, setSavingManv] = useState('');
   const [error, setError] = useState('');
+  const [reauthRequired, setReauthRequired] = useState(false);
+  const actionsLocked = reauthRequired;
   const [editingManv, setEditingManv] = useState('');
   const [editingPubKey, setEditingPubKey] = useState('');
   const [editData, setEditData] = useState<EmployeeEditState>({
@@ -54,14 +57,28 @@ export default function EmployeesPage() {
   async function loadEmployees(currentToken: string) {
     setLoading(true);
     setError('');
+    setReauthRequired(false);
     try {
       const data = await getAllEmployees(currentToken);
       setEmployees(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Lỗi tải danh sách nhân viên.');
+      const message = err instanceof Error ? err.message : 'Lỗi tải danh sách nhân viên.';
+      setError(message);
+      setReauthRequired(
+        message.includes('Quyền tài khoản đã thay đổi') || message.includes('Tài khoản không còn tồn tại'),
+      );
     } finally {
       setLoading(false);
     }
+  }
+
+  function markReauthRequired(message: string) {
+    setError(message);
+    setReauthRequired(
+      message.includes('Quyền tài khoản đã thay đổi') || message.includes('Tài khoản không còn tồn tại'),
+    );
+    setEditingManv('');
+    setEditingPubKey('');
   }
 
   async function handleBeginEdit(employee: EmployeeItem) {
@@ -88,7 +105,8 @@ export default function EmployeesPage() {
         isadmin: detail.isadmin,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không tải được chi tiết nhân viên.');
+      const message = err instanceof Error ? err.message : 'Không tải được chi tiết nhân viên.';
+      markReauthRequired(message);
       setEditingManv('');
       setEditingPubKey('');
     }
@@ -107,8 +125,8 @@ export default function EmployeesPage() {
         setSavingManv('');
         return;
       }
-      if (!editData.tendn.trim()) {
-        setError('Tên đăng nhập không được để trống.');
+      if (manv === user.manv && user.isadmin && !editData.isadmin) {
+        setError('Bạn không thể tự thu hồi quyền admin của chính mình.');
         setSavingManv('');
         return;
       }
@@ -134,7 +152,6 @@ export default function EmployeesPage() {
       await updateEmployee(token, manv, {
         HOTEN: editData.hoten.trim(),
         EMAIL: editData.email.trim(),
-        TENDN: editData.tendn.trim(),
         ...(encryptedSalary ? { LUONG: encryptedSalary } : {}),
         VAITRO: editData.isadmin,
       });
@@ -143,7 +160,8 @@ export default function EmployeesPage() {
       setEditingPubKey('');
       await loadEmployees(token);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không cập nhật được nhân viên.');
+      const message = err instanceof Error ? err.message : 'Không cập nhật được nhân viên.';
+      markReauthRequired(message);
     } finally {
       setSavingManv('');
     }
@@ -151,6 +169,11 @@ export default function EmployeesPage() {
 
   async function handleToggleRole(manv: string, currentIsAdmin: boolean, hoten: string, email: string) {
     if (!token || !user?.isadmin) return;
+    if (manv === user.manv && currentIsAdmin) {
+      setError('Bạn không thể tự thu hồi quyền admin của chính mình.');
+      return;
+    }
+
     const confirmed = window.confirm(
       `Bạn có chắc muốn ${currentIsAdmin ? 'gỡ quyền admin cho' : 'cấp quyền admin cho'} nhân viên ${manv}?`,
     );
@@ -166,7 +189,8 @@ export default function EmployeesPage() {
 
       await loadEmployees(token);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không cập nhật vai trò.');
+      const message = err instanceof Error ? err.message : 'Không cập nhật vai trò.';
+      markReauthRequired(message);
     } finally {
       setSavingManv('');
     }
@@ -218,21 +242,21 @@ export default function EmployeesPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span className="online-dot" /> Trực tuyến
               </div>
-              <button className="view-info-btn" onClick={() => navigate('/profile')}>
+              <button className="view-info-btn" onClick={() => navigate('/profile')} disabled={actionsLocked} style={actionsLocked ? disabledSidebarBtnStyle : undefined}>
                 Xem thông tin
               </button>
             </div>
           </div>
           <nav className="sidebar-nav">
-            <button className="sidebar-tab" type="button" onClick={() => navigate('/classes')}>
+            <button className="sidebar-tab" type="button" onClick={() => navigate('/classes')} disabled={actionsLocked} style={actionsLocked ? disabledSidebarTabStyle : undefined}>
               Quản lý lớp học
             </button>
-            <button className="sidebar-tab active" type="button">
+            <button className="sidebar-tab active" type="button" disabled={actionsLocked} style={actionsLocked ? disabledSidebarTabStyle : undefined}>
               Quản lý nhân viên
             </button>
           </nav>
           <div className="sidebar-footer">
-            <button className="sidebar-logout-btn" onClick={handleLogout}>
+            <button className="sidebar-logout-btn" onClick={handleLogout} disabled={actionsLocked} style={actionsLocked ? disabledLogoutBtnStyle : undefined}>
               Đăng xuất
             </button>
           </div>
@@ -255,9 +279,9 @@ export default function EmployeesPage() {
               </div>
             )}
 
-            {error && <div style={{ color: '#dc2626', marginBottom: '15px', padding: '10px', background: '#fef2f2', borderRadius: '4px' }}>{error}</div>}
+            {error && !reauthRequired && <div style={{ color: '#dc2626', marginBottom: '15px', padding: '10px', background: '#fef2f2', borderRadius: '4px' }}>{error}</div>}
 
-            <div style={{ borderRadius: '6px', overflow: 'hidden', border: '1px solid #ccc' }}>
+            <div style={{ borderRadius: '6px', overflow: 'hidden', border: '1px solid #ccc', pointerEvents: actionsLocked ? 'none' : 'auto', opacity: actionsLocked ? 0.7 : 1 }}>
               {loading ? (
                 <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>Đang tải dữ liệu...</div>
               ) : employees.length === 0 ? (
@@ -277,6 +301,7 @@ export default function EmployeesPage() {
                   <tbody>
                     {employees.map((employee) => {
                       const isEditing = editingManv === employee.manv;
+                      const isCurrentAdminUser = user?.manv === employee.manv && employee.isadmin;
                       return (
                         <Fragment key={employee.manv}>
                           <tr key={employee.manv} style={{ borderBottom: '1px solid #e0e0e0' }}>
@@ -286,7 +311,7 @@ export default function EmployeesPage() {
                                 <input
                                   value={editData.hoten}
                                   onChange={(event) => setEditData((prev) => ({ ...prev, hoten: event.target.value }))}
-                                  style={inputStyle}
+                                  style={editInputStyle}
                                 />
                               ) : (
                                 employee.hoten
@@ -297,22 +322,14 @@ export default function EmployeesPage() {
                                 <input
                                   value={editData.email}
                                   onChange={(event) => setEditData((prev) => ({ ...prev, email: event.target.value }))}
-                                  style={inputStyle}
+                                  style={editInputStyle}
                                 />
                               ) : (
                                 employee.email
                               )}
                             </td>
                             <td style={tdStyle}>
-                              {isEditing ? (
-                                <input
-                                  value={editData.tendn}
-                                  onChange={(event) => setEditData((prev) => ({ ...prev, tendn: event.target.value }))}
-                                  style={inputStyle}
-                                />
-                              ) : (
-                                employee.tendn
-                              )}
+                              <span style={readOnlyValueStyle}>{employee.tendn}</span>
                             </td>
                             <td style={tdStyle}>
                               {isEditing ? (
@@ -320,6 +337,7 @@ export default function EmployeesPage() {
                                   <input
                                     type="checkbox"
                                     checked={editData.isadmin}
+                                    disabled={isCurrentAdminUser}
                                     onChange={(event) => setEditData((prev) => ({ ...prev, isadmin: event.target.checked }))}
                                   />
                                   Quản trị viên
@@ -332,7 +350,7 @@ export default function EmployeesPage() {
                             </td>
                             <td style={{ ...tdStyle, textAlign: 'center' }}>
                               {isEditing ? (
-                                <>
+                                <div style={actionGroupStyle}>
                                   <button
                                     onClick={() => void handleSaveEdit(employee.manv)}
                                     disabled={savingManv === employee.manv}
@@ -343,22 +361,24 @@ export default function EmployeesPage() {
                                   <button onClick={handleCancelEdit} style={btnCancel}>
                                     Hủy
                                   </button>
-                                </>
+                                </div>
                               ) : user?.isadmin ? (
-                                <div style={{ display: 'inline-flex', gap: '6px' }}>
+                                <div style={actionGroupStyle}>
                                   <button
                                     onClick={() => void handleBeginEdit(employee)}
                                     style={btnWarning}
                                   >
                                     Sửa
                                   </button>
-                                  <button
-                                    onClick={() => void handleToggleRole(employee.manv, employee.isadmin, employee.hoten, employee.email)}
-                                    disabled={savingManv === employee.manv}
-                                    style={{ padding: '6px 10px', background: '#fff', color: '#2563eb', border: '1px solid #2563eb', borderRadius: '4px', cursor: 'pointer' }}
-                                  >
-                                    {savingManv === employee.manv ? 'Đang...' : employee.isadmin ? 'Thu quyền' : 'Cấp quyền'}
-                                  </button>
+                                  {!isCurrentAdminUser && (
+                                    <button
+                                      onClick={() => void handleToggleRole(employee.manv, employee.isadmin, employee.hoten, employee.email)}
+                                      disabled={savingManv === employee.manv}
+                                      style={btnRole}
+                                    >
+                                      {savingManv === employee.manv ? 'Đang...' : employee.isadmin ? 'Thu quyền' : 'Cấp quyền'}
+                                    </button>
+                                  )}
                                 </div>
                               ) : (
                                 <span style={{ color: '#aaa' }}>—</span>
@@ -369,7 +389,7 @@ export default function EmployeesPage() {
                             <tr style={{ borderBottom: '1px solid #e0e0e0', background: '#fafafa' }}>
                               <td style={{ ...tdStyle, paddingTop: '0' }} colSpan={6}>
                                 <div style={{ display: 'block', padding: '14px 0' }}>
-                                  <div>
+                                  <div style={editFormGridStyle}>
                                     <label style={labelStyle}>Lương cơ bản</label>
                                     <input
                                       type="number"
@@ -377,7 +397,7 @@ export default function EmployeesPage() {
                                       value={editData.luong}
                                       onChange={(event) => setEditData((prev) => ({ ...prev, luong: event.target.value }))}
                                       placeholder="Để trống nếu không thay đổi lương"
-                                      style={inputStyle}
+                                      style={editInputStyle}
                                     />
                                   </div>
                                 </div>
@@ -398,12 +418,21 @@ export default function EmployeesPage() {
   );
 }
 
-const inputStyle = { padding: '8px', border: '1px solid #ccc', borderRadius: '4px', outline: 'none', width: '100%' };
-const labelStyle = { display: 'block', marginBottom: '6px', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', color: '#475569' };
-const thStyle = { padding: '12px 15px', fontWeight: 'bold', borderBottom: '2px solid #ddd' };
-const tdStyle = { padding: '12px 15px', color: '#333', verticalAlign: 'top' };
-const btnSuccess = { padding: '6px 12px', background: '#4CAF50', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', margin: '0 4px' };
-const btnWarning = { padding: '6px 12px', background: '#fff', color: '#f39c12', border: '1px solid #f39c12', borderRadius: '4px', cursor: 'pointer', margin: '0 4px' };
-const btnCancel = { padding: '6px 12px', background: '#ccc', color: '#333', border: 'none', borderRadius: '4px', cursor: 'pointer', margin: '0 4px' };
-const roleBadgeAdmin = { display: 'inline-flex', padding: '4px 10px', borderRadius: '999px', background: '#dbeafe', color: '#1d4ed8', fontWeight: 700, fontSize: '12px' };
-const roleBadgeStaff = { display: 'inline-flex', padding: '4px 10px', borderRadius: '999px', background: '#ecfdf5', color: '#047857', fontWeight: 700, fontSize: '12px' };
+const inputStyle: CSSProperties = { padding: '8px', border: '1px solid #ccc', borderRadius: '4px', outline: 'none', width: '100%' };
+const editInputStyle: CSSProperties = { ...inputStyle, minHeight: '42px', boxSizing: 'border-box', fontSize: '14px', display: 'block' };
+const labelStyle: CSSProperties = { display: 'block', marginBottom: '6px', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', color: '#475569' };
+const thStyle: CSSProperties = { padding: '12px 15px', fontWeight: 'bold', borderBottom: '2px solid #ddd' };
+const tdStyle: CSSProperties = { padding: '12px 15px', color: '#333', verticalAlign: 'middle' };
+const readOnlyValueStyle: CSSProperties = { display: 'inline-flex', alignItems: 'center', minHeight: '42px', color: '#111827', fontWeight: 400 };
+const actionGroupStyle: CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: '8px', flexWrap: 'nowrap', justifyContent: 'center', whiteSpace: 'nowrap' };
+const commonActionButtonStyle: CSSProperties = { minWidth: '72px', minHeight: '32px', padding: '0 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px', lineHeight: 1.1, whiteSpace: 'nowrap' };
+const btnSuccess: CSSProperties = { ...commonActionButtonStyle, background: '#4CAF50', color: 'white', border: 'none', margin: 0 };
+const btnWarning: CSSProperties = { ...commonActionButtonStyle, background: '#fff', color: '#f39c12', border: '1px solid #f39c12', margin: 0 };
+const btnCancel: CSSProperties = { ...commonActionButtonStyle, background: '#ccc', color: '#333', border: 'none', margin: 0 };
+const btnRole: CSSProperties = { ...commonActionButtonStyle, background: '#fff', color: '#2563eb', border: '1px solid #2563eb', margin: 0 };
+const roleBadgeAdmin: CSSProperties = { display: 'inline-flex', padding: '4px 10px', borderRadius: '999px', background: '#dbeafe', color: '#1d4ed8', fontWeight: 700, fontSize: '12px' };
+const roleBadgeStaff: CSSProperties = { display: 'inline-flex', padding: '4px 10px', borderRadius: '999px', background: '#ecfdf5', color: '#047857', fontWeight: 700, fontSize: '12px' };
+const editFormGridStyle: CSSProperties = { display: 'grid', gap: '6px' };
+const disabledSidebarBtnStyle: CSSProperties = { opacity: 0.65, cursor: 'not-allowed' };
+const disabledSidebarTabStyle: CSSProperties = { opacity: 0.55, cursor: 'not-allowed' };
+const disabledLogoutBtnStyle: CSSProperties = { opacity: 0.55, cursor: 'not-allowed' };

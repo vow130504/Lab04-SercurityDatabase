@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { login } from '../api';
+import { clearGlobalReauthState, login } from '../api';
 import CryptoJS from 'crypto-js';
 
 export default function LoginPage() {
@@ -51,6 +51,7 @@ export default function LoginPage() {
       }
       
       // Điều hướng tùy theo vai trò
+      clearGlobalReauthState();
       if (result.user.isadmin) {
         navigate('/employees');
       } else {
